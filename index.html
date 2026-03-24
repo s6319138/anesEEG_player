@@ -18,17 +18,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Universal Neuro Player (True Clinical Sweep & Annotated)</title>
     <style>
-        body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
+        /* 修改 body 允許垂直捲動，以容納展開的資訊面板 */
+        body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
         .controls { display: flex; gap: 10px; background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center; width: 95%; flex-wrap: wrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5);}
         button { background: #333; color: white; border: 1px solid #555; padding: 5px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:hover { background: #444; }
         .btn-play { background: #006600; }
-        .plot-container { position: relative; width: 95%; margin-bottom: 10px; border: 1px solid #333; background: #000; }
+        .plot-container { position: relative; width: 95%; margin-bottom: 10px; border: 1px solid #333; background: #000; flex-shrink: 0; }
         .plot-label { position: absolute; left: 5px; top: 5px; color: #FFFF00; font-size: 12px; pointer-events: none; z-index: 10; text-shadow: 1px 1px 2px black;}
         canvas { display: block; width: 100%; height: 100%; }
         
-        #timeline { width: 95%; margin: 5px 0 0 0; cursor: pointer; }
-        #annotationTimeline { width: 95%; height: 12px; position: relative; background: #1a1a1a; margin-bottom: 10px; border-radius: 4px; border: 1px solid #333; }
+        #timeline { width: 95%; margin: 5px 0 0 0; cursor: pointer; flex-shrink: 0; }
+        #annotationTimeline { width: 95%; height: 12px; position: relative; background: #1a1a1a; margin-bottom: 10px; border-radius: 4px; border: 1px solid #333; flex-shrink: 0; }
         
         .progress-container { width: 100%; background-color: #444; height: 20px; border-radius: 4px; margin-top: 5px; display: none; }
         .progress-bar { width: 0%; height: 100%; background-color: #00aa00; border-radius: 4px; text-align: center; line-height: 20px; font-size: 12px; color: white; transition: width 0.1s; }
@@ -231,6 +232,8 @@
             <option value="local_case1">預設註記 B：套用於目前波形</option>
         </select>
 
+        <button id="btnContext" onclick="toggleContextPanel()" style="display:none; background:#225588; margin-left: 5px;">ℹ️ 臨床資訊</button>
+
         <label style="margin-left: 10px; color: #00ffcc; font-weight:bold;">標註事件：</label>
         <select id="eventSelect" onchange="jumpToEvent(this.value)" style="background:#112233; color:white; border:1px solid #224466; padding:5px; border-radius:4px; max-width: 200px;">
             <option value="">-- 尚無事件 --</option>
@@ -244,6 +247,13 @@
         <button onclick="exportAnnotations()" style="background:#aa5500;">💾 匯出JSON</button>
 
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
+    </div>
+
+    <!-- 臨床資訊面板 (預設隱藏) -->
+    <div id="contextPanel" style="display:none; width: 95%; background: #112233; border: 1px solid #336699; border-radius: 8px; padding: 15px 20px; margin-bottom: 10px; box-sizing: border-box; text-align: left; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.6);">
+        <button onclick="toggleContextPanel()" style="position: absolute; right: 15px; top: 10px; background: none; border: none; font-size: 14px; color: #999; cursor: pointer;">✖ 關閉</button>
+        <div style="font-weight: bold; color: #66ccff; margin-bottom: 10px; border-bottom: 1px solid #336699; padding-bottom: 8px; font-size: 16px;">📋 案例臨床背景資訊</div>
+        <div id="contextContent" style="font-size: 14px; color: #ddd; line-height: 1.6;"></div>
     </div>
 
     <!-- 第二區：畫面顯示調整 -->
@@ -269,7 +279,7 @@
         </select>
     </div>
 
-    <!-- EEG 顯示區 (調整高度為 36vh 避免超出螢幕) -->
+    <!-- EEG 顯示區 (調整高度為 36vh) -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="eegCanvas"></canvas>
         <div class="plot-label" id="lblEeg">EEG (RAW µV - Sweep Mode)</div>
@@ -279,7 +289,7 @@
     <input type="range" id="timeline" min="0" max="1000" value="0" step="1" oninput="onSeek(this.value)" onmousedown="onSeekStart()" onmouseup="onSeekEnd()">
     <div id="annotationTimeline"></div>
 
-    <!-- DSA 顯示區 (調整高度為 36vh 避免超出螢幕) -->
+    <!-- DSA 顯示區 (調整高度為 36vh) -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="dsaCanvas"></canvas>
         <div class="plot-label">DSA Trend (Raw Blocks / Top: Ch1, Bottom: Ch2)</div>
@@ -315,19 +325,27 @@
         let lastDsaTimeIdx = 0; 
 
         let annotations = []; 
+        let currentContext = null; // 儲存目前的臨床背景資訊
         
-        // --- 修改：支援遠端下載檔案的案例資料庫 ---
+        // --- 修改：支援遠端下載檔案與臨床資訊的案例資料庫 ---
         const presetCases = {
-            // 模式 1：遠端完整案例 (自動下載 EDF/R2A 與 JSON)
+            // 模式 1：遠端完整案例
             "remote_case1": {
                 type: "remote",
-                dataUrl: "case1/case1.r2a",  // 替換成您設定的 r2a 路徑
-                jsonUrl: "case1/case1.json"  // 替換成您設定的 json 路徑
+                dataUrl: "case1/case1.r2a",  
+                jsonUrl: "case1/case1.json"  
             },
 
-            // 模式 2：純本機註記 (適用於使用者已經手動開啟某個檔案，只套用標記)
+            // 模式 2：純本機註記 (加入臨床背景資訊測試)
             "local_case1": {
                 type: "local",
+                context: {
+                    patient: "75歲 / 男性 / 65kg",
+                    surgery: "CABG 冠狀動脈繞道手術",
+                    anesthesia: "TCI Propofol + Remifentanil",
+                    history: "高血壓、糖尿病、慢性腎病",
+                    note: "這是一個高風險案例。請注意誘導期血壓波動可能較大，並觀察給藥後的腦波變化特徵。"
+                },
                 annotations: [
                     { timeIdx: 128 * 60, label: "開始給予 Propofol", color: "#00FF00" },
                     { timeIdx: 128 * 180, label: "失去意識 (LOC)", color: "#FFD700" }
@@ -335,7 +353,50 @@
             }
         };
 
-        // --- 新增：更新事件下拉選單 ---
+        // --- 新增：臨床資訊面板控制 ---
+        function toggleContextPanel() {
+            const panel = document.getElementById('contextPanel');
+            panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+        }
+
+        function renderContextPanel() {
+            const btn = document.getElementById('btnContext');
+            const panel = document.getElementById('contextPanel');
+            const content = document.getElementById('contextContent');
+            
+            if (!currentContext || Object.keys(currentContext).length === 0) {
+                btn.style.display = 'none';
+                panel.style.display = 'none';
+                return;
+            }
+
+            btn.style.display = 'inline-block';
+            
+            // 將物件資料轉換為表格顯示
+            let html = '<table style="width: 100%; border-collapse: collapse;">';
+            const keyMap = {
+                patient: "病患資訊",
+                surgery: "手術名稱",
+                anesthesia: "麻醉方式",
+                history: "過去病史",
+                note: "備註說明"
+            };
+
+            for (const [key, value] of Object.entries(currentContext)) {
+                let displayKey = keyMap[key] || key;
+                html += `<tr>
+                    <td style="width: 120px; color: #88bbdd; vertical-align: top; padding: 4px 0;">${displayKey}：</td>
+                    <td style="padding: 4px 0; color: #eee;">${value}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            content.innerHTML = html;
+            
+            // 預設展開面板
+            panel.style.display = 'block';
+        }
+
+        // --- 更新事件下拉選單 ---
         function updateEventDropdown() {
             const select = document.getElementById('eventSelect');
             select.innerHTML = '<option value="">-- 選擇跳轉事件 --</option>';
@@ -357,7 +418,7 @@
             });
         }
 
-        // --- 新增：跳轉到指定的事件 ---
+        // --- 跳轉到指定的事件 ---
         function jumpToEvent(indexStr) {
             if (indexStr === "") return;
             const idx = parseInt(indexStr);
@@ -375,6 +436,8 @@
         async function loadPresetCase(caseKey) {
             if (!caseKey) {
                 annotations = [];
+                currentContext = null;
+                renderContextPanel();
                 renderAnnotationDots();
                 drawEEG();
                 drawDSAFromMatrix();
@@ -416,14 +479,18 @@
                         if (jsonResponse.ok) {
                             const parsed = await jsonResponse.json();
                             annotations = parsed.annotations || [];
+                            currentContext = parsed.context || null; // 讀取臨床資訊
                         } else {
                             annotations = [];
+                            currentContext = null;
                         }
                     } catch (e) {
                         console.warn("未找到配套的 JSON 檔案或解析失敗");
                         annotations = [];
+                        currentContext = null;
                     }
 
+                    renderContextPanel();
                     jumpToFirstAnnotation();
                     renderAnnotationDots();
 
@@ -444,6 +511,8 @@
                     return;
                 }
                 annotations = [...caseInfo.annotations];
+                currentContext = caseInfo.context || null;
+                renderContextPanel();
                 jumpToFirstAnnotation();
                 renderAnnotationDots();
             }
@@ -568,7 +637,10 @@
                     const parsed = JSON.parse(e.target.result);
                     if (parsed.annotations) {
                         annotations = parsed.annotations;
+                        currentContext = parsed.context || null; // 同時載入臨床資訊
+                        
                         document.getElementById('caseSelect').value = ""; // 切換到自訂
+                        renderContextPanel();
                         renderAnnotationDots();
                         drawEEG();
                         drawDSAFromMatrix();
@@ -613,6 +685,8 @@
 
             document.getElementById('caseSelect').value = "";
             annotations = [];
+            currentContext = null;
+            renderContextPanel();
 
             const ext = file.name.split('.').pop().toLowerCase();
             const reader = new FileReader();
@@ -1067,9 +1141,11 @@
                 alert("目前沒有任何標記可以匯出！");
                 return;
             }
+            // 匯出時包含臨床背景資訊
             const exportData = {
                 fileType: currentFileType,
                 exportDate: new Date().toISOString(),
+                context: currentContext, 
                 annotations: annotations
             };
             const dataStr = JSON.stringify(exportData, null, 2);
@@ -1152,5 +1228,4 @@
     </script>
 </body>
 </html>
-
 <!-- 更新版本 -->
