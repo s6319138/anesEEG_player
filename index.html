@@ -215,6 +215,7 @@
         </div>
     </div>
 
+    <!-- 第一區：檔案操作與標註系統 -->
     <div class="controls">
         <button onclick="document.getElementById('fileInput').click()">📂 Open .edf / .r2a / .json</button>
         <input type="file" id="fileInput" accept=".edf, .r2a, .json" multiple style="display: none;" onchange="handleFileSelect(event)">
@@ -223,40 +224,20 @@
         
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
 
-        <label>Amp:</label>
-        <button onclick="adjustAmp(0.8)">-</button>
-        <span id="txtAmp" style="width:40px; text-align:center;">x2.0</span>
-        <button onclick="adjustAmp(1.25)">+</button>
-
-        <label style="margin-left: 15px;">EEG Zoom:</label>
-        <input type="range" id="zoomSlider" min="5" max="40" value="10" oninput="updateZoom(this.value)">
-        <span id="txtZoom" style="width:40px; text-align:center;">12s</span>
-
-        <label style="margin-left: 15px;">DSA Speed:</label>
-        <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
-            <option value="4.0">Trend (4s)</option>
-            <option value="1.0" selected>Fast (1s)</option>
-            <option value="0.5">Turbo (0.5s)</option>
-        </select>
-
-        <!-- 修改：教學案例選單 -->
-        <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
-        <label style="margin-left: 5px; color: #ffbb00;">線上教學案例：</label>
+        <label style="color: #ffbb00; font-weight:bold;">教學案例：</label>
         <select id="caseSelect" onchange="loadPresetCase(this.value)" style="background:#332211; color:white; border:1px solid #775522; padding:5px; border-radius:4px; font-weight: bold;">
             <option value="">-- 選擇線上案例 --</option>
             <option value="remote_case1">教學案例 1 (case1)</option>
             <option value="local_case1">預設註記 B：套用於目前波形</option>
         </select>
 
-        <!-- 新增：事件跳轉下拉選單 -->
-        <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
-        <label style="margin-left: 5px; color: #00ffcc;">標註事件：</label>
+        <label style="margin-left: 10px; color: #00ffcc; font-weight:bold;">標註事件：</label>
         <select id="eventSelect" onchange="jumpToEvent(this.value)" style="background:#112233; color:white; border:1px solid #224466; padding:5px; border-radius:4px; max-width: 200px;">
             <option value="">-- 尚無事件 --</option>
         </select>
 
-        <!-- 新增：自訂註記與匯出工具 -->
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+
         <input type="text" id="noteInput" placeholder="輸入註記..." style="width:100px; background:#333; color:white; border:1px solid #555; padding:5px; border-radius:4px;">
         <input type="color" id="noteColor" value="#ffbb00" style="background:none; border:none; width:30px; height:30px; cursor:pointer;" title="選擇顏色">
         <button onclick="addCurrentTimeAnnotation()" style="background:#0055aa;">📌 標記</button>
@@ -265,7 +246,31 @@
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
     </div>
 
-    <div class="plot-container" style="height: 38vh;">
+    <!-- 第二區：畫面顯示調整 -->
+    <div class="controls" style="margin-bottom: 10px; padding: 6px 10px;">
+        <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[EEG 調整]</span>
+        <label>Amp:</label>
+        <button onclick="adjustAmp(0.8)">-</button>
+        <span id="txtAmp" style="width:40px; text-align:center;">x2.0</span>
+        <button onclick="adjustAmp(1.25)">+</button>
+
+        <label style="margin-left: 15px;">Zoom:</label>
+        <input type="range" id="zoomSlider" min="5" max="40" value="10" oninput="updateZoom(this.value)">
+        <span id="txtZoom" style="width:40px; text-align:center;">12s</span>
+
+        <div style="border-left:1px solid #555; height:20px; margin:0 15px;"></div>
+
+        <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[DSA 調整]</span>
+        <label>Speed:</label>
+        <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
+            <option value="4.0">Trend (4s)</option>
+            <option value="1.0" selected>Fast (1s)</option>
+            <option value="0.5">Turbo (0.5s)</option>
+        </select>
+    </div>
+
+    <!-- EEG 顯示區 (調整高度為 36vh 避免超出螢幕) -->
+    <div class="plot-container" style="height: 36vh;">
         <canvas id="eegCanvas"></canvas>
         <div class="plot-label" id="lblEeg">EEG (RAW µV - Sweep Mode)</div>
     </div>
@@ -274,7 +279,8 @@
     <input type="range" id="timeline" min="0" max="1000" value="0" step="1" oninput="onSeek(this.value)" onmousedown="onSeekStart()" onmouseup="onSeekEnd()">
     <div id="annotationTimeline"></div>
 
-    <div class="plot-container" style="height: 38vh;">
+    <!-- DSA 顯示區 (調整高度為 36vh 避免超出螢幕) -->
+    <div class="plot-container" style="height: 36vh;">
         <canvas id="dsaCanvas"></canvas>
         <div class="plot-label">DSA Trend (Raw Blocks / Top: Ch1, Bottom: Ch2)</div>
     </div>
@@ -861,7 +867,7 @@
                 eegCtx.fillText(channelLabels[i], 10, yOffset - 10);
             });
 
-            // --- 修改：僅繪製虛線，並把文字改為左下角的狀態框呈現 ---
+            // 僅繪製虛線，並把文字改為左下角的狀態框呈現
             annotations.forEach((note) => {
                 if (note.timeIdx >= kStart && note.timeIdx <= kEnd) {
                     const x = ((note.timeIdx % windowSamples) / windowSamples) * eegCanvas.width;
