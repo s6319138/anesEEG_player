@@ -16,7 +16,7 @@
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Neuro Player (True Clinical Sweep)</title>
+    <title>Universal Neuro Player (True Clinical Sweep & Annotated)</title>
     <style>
         body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
         .controls { display: flex; gap: 10px; background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center; width: 95%; flex-wrap: wrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5);}
@@ -26,7 +26,9 @@
         .plot-container { position: relative; width: 95%; margin-bottom: 10px; border: 1px solid #333; background: #000; }
         .plot-label { position: absolute; left: 5px; top: 5px; color: #FFFF00; font-size: 12px; pointer-events: none; z-index: 10; text-shadow: 1px 1px 2px black;}
         canvas { display: block; width: 100%; height: 100%; }
-        #timeline { width: 95%; margin: 10px 0; cursor: pointer; }
+        
+        #timeline { width: 95%; margin: 5px 0 0 0; cursor: pointer; }
+        #annotationTimeline { width: 95%; height: 12px; position: relative; background: #1a1a1a; margin-bottom: 10px; border-radius: 4px; border: 1px solid #333; }
         
         .progress-container { width: 100%; background-color: #444; height: 20px; border-radius: 4px; margin-top: 5px; display: none; }
         .progress-bar { width: 0%; height: 100%; background-color: #00aa00; border-radius: 4px; text-align: center; line-height: 20px; font-size: 12px; color: white; transition: width 0.1s; }
@@ -214,8 +216,8 @@
     </div>
 
     <div class="controls">
-        <button onclick="document.getElementById('fileInput').click()">📂 Open .edf / .r2a</button>
-        <input type="file" id="fileInput" accept=".edf, .r2a" style="display: none;" onchange="handleFileSelect(event)">
+        <button onclick="document.getElementById('fileInput').click()">📂 Open .edf / .r2a / .json</button>
+        <input type="file" id="fileInput" accept=".edf, .r2a, .json" multiple style="display: none;" onchange="handleFileSelect(event)">
         
         <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Play</button>
         
@@ -237,17 +239,35 @@
             <option value="0.5">Turbo (0.5s)</option>
         </select>
 
+        <!-- 修改：教學案例選單 -->
+        <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+        <label style="margin-left: 5px; color: #ffbb00;">線上教學案例：</label>
+        <select id="caseSelect" onchange="loadPresetCase(this.value)" style="background:#332211; color:white; border:1px solid #775522; padding:5px; border-radius:4px; font-weight: bold;">
+            <option value="">-- 選擇線上案例 --</option>
+            <option value="remote_case1">教學案例 1 (case1)</option>
+            <option value="local_case1">預設註記 B：套用於目前波形</option>
+        </select>
+
+        <!-- 新增：自訂註記與匯出工具 -->
+        <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+        <input type="text" id="noteInput" placeholder="輸入註記..." style="width:100px; background:#333; color:white; border:1px solid #555; padding:5px; border-radius:4px;">
+        <input type="color" id="noteColor" value="#ffbb00" style="background:none; border:none; width:30px; height:30px; cursor:pointer;" title="選擇顏色">
+        <button onclick="addCurrentTimeAnnotation()" style="background:#0055aa;">📌 標記</button>
+        <button onclick="exportAnnotations()" style="background:#aa5500;">💾 匯出JSON</button>
+
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
     </div>
 
-    <div class="plot-container" style="height: 40vh;">
+    <div class="plot-container" style="height: 38vh;">
         <canvas id="eegCanvas"></canvas>
         <div class="plot-label" id="lblEeg">EEG (RAW µV - Sweep Mode)</div>
     </div>
 
+    <!-- 時間軸與標記區 -->
     <input type="range" id="timeline" min="0" max="1000" value="0" step="1" oninput="onSeek(this.value)" onmousedown="onSeekStart()" onmouseup="onSeekEnd()">
+    <div id="annotationTimeline"></div>
 
-    <div class="plot-container" style="height: 40vh;">
+    <div class="plot-container" style="height: 38vh;">
         <canvas id="dsaCanvas"></canvas>
         <div class="plot-label">DSA Trend (Raw Blocks / Top: Ch1, Bottom: Ch2)</div>
     </div>
@@ -280,6 +300,185 @@
         let dsaMaxFreqIdx = 0; 
         let dsaHistorySteps = 0;
         let lastDsaTimeIdx = 0; 
+
+        let annotations = []; 
+        
+        // --- 修改：支援遠端下載檔案的案例資料庫 ---
+        const presetCases = {
+            // 模式 1：遠端完整案例 (自動下載 EDF/R2A 與 JSON)
+            "remote_case1": {
+                type: "remote",
+                dataUrl: "case1/case1.r2a",  // 替換成您設定的 r2a 路徑
+                jsonUrl: "case1/case1.json"  // 替換成您設定的 json 路徑
+            },
+
+            // 模式 2：純本機註記 (適用於使用者已經手動開啟某個檔案，只套用標記)
+            "local_case1": {
+                type: "local",
+                annotations: [
+                    { timeIdx: 128 * 60, label: "開始給予 Propofol", color: "#00FF00" },
+                    { timeIdx: 128 * 180, label: "失去意識 (LOC)", color: "#FFD700" }
+                ]
+            }
+        };
+
+        // --- 新增：處理線上案例下載與切換 ---
+        async function loadPresetCase(caseKey) {
+            if (!caseKey) {
+                annotations = [];
+                renderAnnotationDots();
+                return;
+            }
+
+            const caseInfo = presetCases[caseKey];
+
+            if (caseInfo.type === "remote") {
+                // 自動下載模式
+                document.getElementById('loader').style.display = 'flex';
+                isPlaying = false; 
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                
+                try {
+                    loaderText.innerText = "Downloading EEG Data from Cloud...";
+                    const dataResponse = await fetch(caseInfo.dataUrl);
+                    if (!dataResponse.ok) throw new Error("找不到波形檔案，請確認路徑正確。");
+                    const arrayBuffer = await dataResponse.arrayBuffer();
+
+                    // 判斷副檔名
+                    const ext = caseInfo.dataUrl.split('.').pop().toLowerCase();
+                    let parser;
+                    if (ext === 'edf') {
+                        parser = new SimpleEDFParser(arrayBuffer);
+                        currentFileType = "Sedline EDF";
+                    } else if (ext === 'r2a') {
+                        parser = new SimpleR2AParser(arrayBuffer);
+                        currentFileType = "BIS R2A";
+                    }
+
+                    // 初始化播放器核心
+                    initializePlayerCore(parser);
+
+                    // 下載對應的 JSON 標記
+                    loaderText.innerText = "Downloading Annotations...";
+                    try {
+                        const jsonResponse = await fetch(caseInfo.jsonUrl);
+                        if (jsonResponse.ok) {
+                            const parsed = await jsonResponse.json();
+                            annotations = parsed.annotations || [];
+                        } else {
+                            annotations = [];
+                        }
+                    } catch (e) {
+                        console.warn("未找到配套的 JSON 檔案或解析失敗");
+                        annotations = [];
+                    }
+
+                    jumpToFirstAnnotation();
+                    renderAnnotationDots();
+
+                    loaderText.innerText = "Pre-calculating DSA...";
+                    setTimeout(() => precomputeDSA(), 50);
+
+                } catch (err) {
+                    alert("載入線上案例失敗：" + err.message);
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('caseSelect').value = "";
+                }
+
+            } else if (caseInfo.type === "local") {
+                // 本機標記套用模式
+                if (!neuroData) {
+                    alert("這個案例是「純註記」，請先手動開啟對應的波形檔案。");
+                    document.getElementById('caseSelect').value = "";
+                    return;
+                }
+                annotations = [...caseInfo.annotations];
+                jumpToFirstAnnotation();
+                renderAnnotationDots();
+            }
+        }
+
+        // 跳轉到第一個標記點的輔助函數
+        function jumpToFirstAnnotation() {
+            if (annotations.length > 0) {
+                currentTimeIdx = annotations[0].timeIdx;
+                if (currentTimeIdx >= totalSamples) currentTimeIdx = totalSamples - 1;
+                timeline.value = currentTimeIdx;
+                updateTimeText();
+                drawEEG();
+                drawDSAFromMatrix();
+            }
+        }
+
+        // --- 核心共用：初始化播放器狀態 ---
+        function initializePlayerCore(parser) {
+            ampScale = 2.0;
+            document.getElementById('txtAmp').innerText = "x" + ampScale.toFixed(1);
+            document.getElementById('lblEeg').innerText = `${currentFileType} EEG (RAW µV - Sweep Mode)`;
+
+            neuroData = parser.signals;
+            fs = parser.header.fs;
+            if (!neuroData[0] || neuroData[0].data.length === 0) throw new Error("No valid data parsed.");
+            totalSamples = neuroData[0].data.length;
+            
+            timeline.max = totalSamples;
+            timeline.value = 0;
+            currentTimeIdx = 0;
+            lastDsaTimeIdx = 0;
+            
+            const numChannelsToRender = Math.min(neuroData.length, 2);
+            activeChannels = Array.from({length: numChannelsToRender}, (_, i) => i);
+            channelLabels = activeChannels.map(i => neuroData[i].label);
+            
+            channelBaseScales = new Array(numChannelsToRender).fill(1.0);
+            channelGlobalMeans = new Array(numChannelsToRender).fill(0);
+
+            resize(); 
+            calculateGlobalScales(); 
+        }
+
+        function renderAnnotationDots() {
+            const container = document.getElementById('annotationTimeline');
+            container.innerHTML = ''; // 清空舊標記
+            
+            if (!neuroData || totalSamples === 0) return;
+
+            annotations.forEach((note) => {
+                const dot = document.createElement('div');
+                // 計算標記點在時間軸上的百分比位置
+                const posPercentage = (note.timeIdx / totalSamples) * 100;
+                
+                // 只繪製在範圍內的標記點
+                if (posPercentage >= 0 && posPercentage <= 100) {
+                    dot.style.cssText = `
+                        position: absolute; 
+                        left: ${posPercentage}%; 
+                        top: 0; 
+                        width: 6px; 
+                        height: 100%; 
+                        background-color: ${note.color}; 
+                        cursor: pointer;
+                        border-radius: 2px;
+                        box-shadow: 0 0 3px black;
+                        z-index: 10;
+                    `;
+                    
+                    dot.title = note.label; // 滑鼠懸浮時顯示文字
+                    
+                    // 點擊標記點時，跳轉到該時間
+                    dot.onclick = () => {
+                        currentTimeIdx = note.timeIdx;
+                        if(currentTimeIdx >= totalSamples) currentTimeIdx = totalSamples - 1;
+                        timeline.value = currentTimeIdx; // 同步 Slider 的位置
+                        updateTimeText();
+                        drawEEG();
+                        drawDSAFromMatrix();
+                    };
+                    
+                    container.appendChild(dot);
+                }
+            });
+        }
         
         const dsaBufferCanvas = document.createElement('canvas');
         const dsaCtxBuffer = dsaBufferCanvas.getContext('2d');
@@ -308,13 +507,56 @@
         }
         window.addEventListener('resize', resize);
 
+        function loadJsonFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed.annotations) {
+                        annotations = parsed.annotations;
+                        document.getElementById('caseSelect').value = ""; // 切換到自訂
+                        renderAnnotationDots();
+                        alert(`成功載入 ${annotations.length} 個標記！`);
+                    }
+                } catch(err) { alert("載入標記檔失敗：" + err); }
+            };
+            reader.readAsText(file);
+        }
+
         function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+            const files = event.target.files;
+            if (files.length === 0) return;
+            
+            let dataFile = null;
+            let jsonFile = null;
+
+            // 支援同時選擇多個檔案，區分出 EDF/R2A 與 JSON
+            for (let i = 0; i < files.length; i++) {
+                const ext = files[i].name.split('.').pop().toLowerCase();
+                if (ext === 'edf' || ext === 'r2a') dataFile = files[i];
+                if (ext === 'json') jsonFile = files[i];
+            }
+
+            // 如果只上傳 JSON 標記檔 (前提是已經載入過波形)
+            if (jsonFile && !dataFile) {
+                if (!neuroData) {
+                    alert("請先載入波形檔案，再載入標記檔！");
+                    return;
+                }
+                loadJsonFile(jsonFile);
+                event.target.value = ""; // 重置 input 以允許重複選取
+                return;
+            }
+
+            if (!dataFile) return;
+            const file = dataFile;
             
             document.getElementById('loader').style.display = 'flex';
             isPlaying = false; 
             if(animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            document.getElementById('caseSelect').value = "";
+            annotations = [];
 
             const ext = file.name.split('.').pop().toLowerCase();
             const reader = new FileReader();
@@ -332,29 +574,14 @@
                         throw new Error("Unsupported file format.");
                     }
 
-                    ampScale = 2.0;
-                    document.getElementById('txtAmp').innerText = "x" + ampScale.toFixed(1);
-                    document.getElementById('lblEeg').innerText = `${currentFileType} EEG (RAW µV - Sweep Mode)`;
-
-                    neuroData = parser.signals;
-                    fs = parser.header.fs;
-                    if (!neuroData[0] || neuroData[0].data.length === 0) throw new Error("No valid data parsed.");
-                    totalSamples = neuroData[0].data.length;
+                    // 使用共用初始化模組
+                    initializePlayerCore(parser);
                     
-                    timeline.max = totalSamples;
-                    timeline.value = 0;
-                    currentTimeIdx = 0;
-                    lastDsaTimeIdx = 0;
-                    
-                    const numChannelsToRender = Math.min(neuroData.length, 2);
-                    activeChannels = Array.from({length: numChannelsToRender}, (_, i) => i);
-                    channelLabels = activeChannels.map(i => neuroData[i].label);
-                    
-                    channelBaseScales = new Array(numChannelsToRender).fill(1.0);
-                    channelGlobalMeans = new Array(numChannelsToRender).fill(0);
-
-                    resize(); 
-                    calculateGlobalScales(); 
+                    if (jsonFile) {
+                        loadJsonFile(jsonFile);
+                    } else {
+                        renderAnnotationDots(); 
+                    }
 
                     loaderText.innerText = "Pre-calculating DSA...";
                     setTimeout(() => precomputeDSA(), 50);
@@ -501,22 +728,16 @@
             }
         }
 
-        // --- 核心更新：完美的環繞式掃描演算法 (Sweep Wrap-around) ---
         function drawEEG() {
             if (!neuroData) return;
             eegCtx.fillStyle = 'black';
             eegCtx.fillRect(0, 0, eegCanvas.width, eegCanvas.height);
             
             const windowSamples = Math.floor(windowSec * fs);
-            
-            // 強制轉換為整數，避免浮點數陣列索引導致讀取到 undefined (即 NaN)
             const currentIntIdx = Math.floor(currentTimeIdx);
             const currentMod = currentIntIdx % windowSamples;
-            
-            // 0.2秒的擦除區塊 (Erase Bar)
             const eraseSamples = Math.floor(0.2 * fs); 
             
-            // 靜態背景：1秒間隔的網格線
             eegCtx.save();
             eegCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; 
             eegCtx.lineWidth = 1;
@@ -535,7 +756,6 @@
             eegCtx.textAlign = 'right';
             eegCtx.textBaseline = 'middle';
 
-            // 決定要繪製的資料起迄點：從「當下時間 往前推一整個視窗(排除擦除區)」到「當下時間」
             const kStart = Math.max(0, currentIntIdx - windowSamples + eraseSamples);
             const kEnd = currentIntIdx;
 
@@ -550,7 +770,6 @@
                 const refUV = 50; 
                 const pxOffset = refUV * totalScale;
 
-                // 繪製電壓參考線
                 eegCtx.save();
                 eegCtx.strokeStyle = '#333'; eegCtx.setLineDash([2, 2]); 
                 eegCtx.beginPath(); eegCtx.moveTo(0, yOffset - pxOffset); eegCtx.lineTo(eegCanvas.width, yOffset - pxOffset); eegCtx.stroke();
@@ -562,7 +781,6 @@
                 eegCtx.fillText("-50µV", eegCanvas.width - 5, yOffset + pxOffset);
                 eegCtx.restore();
 
-                // 開始畫環繞波形
                 eegCtx.beginPath();
                 eegCtx.strokeStyle = '#FFFF00';
                 eegCtx.lineWidth = 1.2;
@@ -575,12 +793,9 @@
                 
                 for (let k = kStart; k <= endLimit; k += drawStep) {
                     const val = (rawData[k] - globalMean); 
-                    
-                    // 利用 modulo 計算 x 座標，產生環繞效果
                     const x = ((k % windowSamples) / windowSamples) * eegCanvas.width;
                     const y = yOffset - (val * totalScale);
                     
-                    // 當 x 突然變小 (例如從畫面最右邊跳回最左邊)，代表跨越了視窗邊界，必須斷開線條 (moveTo)
                     if (first || x < prevX) {
                         eegCtx.moveTo(x, y);
                         first = false;
@@ -596,7 +811,6 @@
                 eegCtx.fillText(channelLabels[i], 10, yOffset - 10);
             });
             
-            // 繪製紅色的垂直掃描游標 (Pen)
             const cursorX = (currentMod / windowSamples) * eegCanvas.width;
             eegCtx.fillStyle = '#FF0000';
             eegCtx.fillRect(cursorX, 0, 2, eegCanvas.height);
@@ -668,6 +882,54 @@
             
             dsaCtx.fillStyle = '#FF0000';
             dsaCtx.fillRect(w - 2, 0, 2, h);
+        }
+
+        // --- 新增：自訂註記與匯出功能 ---
+        function addCurrentTimeAnnotation() {
+            if (!neuroData) {
+                alert("請先載入波形檔案！");
+                return;
+            }
+            const text = document.getElementById('noteInput').value.trim();
+            const color = document.getElementById('noteColor').value;
+            if (!text) {
+                alert("請輸入註記內容！");
+                return;
+            }
+            
+            // 新增標記到陣列
+            annotations.push({
+                timeIdx: Math.floor(currentTimeIdx),
+                label: text,
+                color: color
+            });
+            
+            // 依據時間先後排序
+            annotations.sort((a, b) => a.timeIdx - b.timeIdx);
+            
+            renderAnnotationDots();
+            document.getElementById('noteInput').value = ''; // 清空輸入框
+            document.getElementById('caseSelect').value = ""; // 將下拉選單切換至自訂
+        }
+
+        function exportAnnotations() {
+            if (annotations.length === 0) {
+                alert("目前沒有任何標記可以匯出！");
+                return;
+            }
+            const exportData = {
+                fileType: currentFileType,
+                exportDate: new Date().toISOString(),
+                annotations: annotations
+            };
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `EEG_Annotations_${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         function getFixedJetColor(v) {
