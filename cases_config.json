@@ -7,23 +7,10 @@
   },
   {
     "id": "remote_case2",
-    "name": "教學案例 2 (爆發抑制)",
+    "name": "教學案例 2 (test)",
     "dataUrl": "case2/case2.r2a",
     "jsonUrl": "case2/case2.json"
   }
 ]
 
-### 自動化運作流程（未來新增 Case 的做法）：
 
-假設下個月您做好了 `case3` 的教材：
-1. **上傳檔案**：把 `case3.r2a` 與 `case3.json` 上傳到 GitHub 的 `case3` 資料夾內。
-2. **編輯 Config**：打開您 GitHub 上的 `cases_config.json` 檔案，在陣列的最下方再加一組：
-   ```json
-   ... ,
-   {
-     "id": "remote_case3",
-     "name": "教學案例 3 (術中覺醒)",
-     "dataUrl": "case3/case3.r2a",
-     "jsonUrl": "case3/case3.json"
-   }
-   3. **完成！**：存檔後，只要學生打開您的網頁，下拉選單裡就會**自動多出「教學案例 3」這個選項**，完全不需要動到任何一滴網頁程式碼。這也是各大線上平台管理教材的標準做法！
