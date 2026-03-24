@@ -225,11 +225,11 @@
         
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
 
+        <!-- 修改：選單內的硬編碼已移除，改由程式自動生成 -->
         <label style="color: #ffbb00; font-weight:bold;">教學案例：</label>
         <select id="caseSelect" onchange="loadPresetCase(this.value)" style="background:#332211; color:white; border:1px solid #775522; padding:5px; border-radius:4px; font-weight: bold;">
             <option value="">-- 選擇線上案例 --</option>
-            <option value="remote_case1">教學案例 1 (case1)</option>
-            <option value="local_case1">預設註記 B：套用於目前波形</option>
+            <option id="localCaseMarker" value="local_case1">預設註記 B：套用於目前波形</option>
         </select>
 
         <button id="btnContext" onclick="toggleContextPanel()" style="display:none; background:#225588; margin-left: 5px;">ℹ️ 臨床資訊</button>
@@ -257,7 +257,7 @@
         <div id="contextContent" style="font-size: 14px; color: #ddd; line-height: 1.6;"></div>
     </div>
 
-    <!-- 新增：臨床資訊編輯彈窗 -->
+    <!-- 臨床資訊編輯彈窗 -->
     <div id="contextModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
         <div style="background:#223344; padding:20px; border-radius:8px; width:450px; border:1px solid #446688; box-shadow: 0 4px 15px rgba(0,0,0,0.8); color: white;">
             <h3 style="margin-top:0; color:#66ccff; border-bottom: 1px solid #446688; padding-bottom: 10px;">✏️ 編輯臨床背景資訊</h3>
@@ -311,7 +311,7 @@
         </select>
     </div>
 
-    <!-- EEG 顯示區 (調整高度為 36vh) -->
+    <!-- EEG 顯示區 -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="eegCanvas"></canvas>
         <div class="plot-label" id="lblEeg">EEG (RAW µV - Sweep Mode)</div>
@@ -321,7 +321,7 @@
     <input type="range" id="timeline" min="0" max="1000" value="0" step="1" oninput="onSeek(this.value)" onmousedown="onSeekStart()" onmouseup="onSeekEnd()">
     <div id="annotationTimeline"></div>
 
-    <!-- DSA 顯示區 (調整高度為 36vh) -->
+    <!-- DSA 顯示區 -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="dsaCanvas"></canvas>
         <div class="plot-label">DSA Trend (Raw Blocks / Top: Ch1, Bottom: Ch2)</div>
@@ -357,35 +357,55 @@
         let lastDsaTimeIdx = 0; 
 
         let annotations = []; 
-        let currentContext = null; // 儲存目前的臨床背景資訊
+        let currentContext = null; 
         
-        // --- 修改：支援遠端下載檔案與臨床資訊的案例資料庫 ---
-        const presetCases = {
-            // 模式 1：遠端完整案例
-            "remote_case1": {
-                type: "remote",
-                dataUrl: "case1/case1.r2a",  
-                jsonUrl: "case1/case1.json"  
-            },
-
-            // 模式 2：純本機註記 (加入臨床背景資訊測試)
+        // --- 修改：案例庫改為空白，由 config 動態載入 ---
+        let presetCases = {
             "local_case1": {
                 type: "local",
                 context: {
-                    patient: "75歲 / 男性 / 65kg",
-                    surgery: "CABG 冠狀動脈繞道手術",
-                    anesthesia: "TCI Propofol + Remifentanil",
-                    history: "高血壓、糖尿病、慢性腎病",
-                    note: "這是一個高風險案例。請注意誘導期血壓波動可能較大，並觀察給藥後的腦波變化特徵。"
+                    patient: "範例 / 測試用",
+                    note: "您可以自己上傳波形，並套用這個本機測試註記。"
                 },
                 annotations: [
-                    { timeIdx: 128 * 60, label: "開始給予 Propofol", color: "#00FF00" },
-                    { timeIdx: 128 * 180, label: "失去意識 (LOC)", color: "#FFD700" }
+                    { timeIdx: 128 * 60, label: "測試註記 A", color: "#00FF00" },
+                    { timeIdx: 128 * 180, label: "測試註記 B", color: "#FFD700" }
                 ]
             }
         };
 
-        // --- 新增：臨床資訊面板控制 ---
+        // --- 新增：網頁載入時自動讀取 cases_config.json ---
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 嘗試從同層目錄抓取 cases_config.json
+                const response = await fetch('cases_config.json');
+                if (response.ok) {
+                    const configCases = await response.json();
+                    const select = document.getElementById('caseSelect');
+                    const localMarker = document.getElementById('localCaseMarker');
+                    
+                    configCases.forEach(c => {
+                        // 1. 將設定檔內的資料動態寫入 presetCases
+                        presetCases[c.id] = {
+                            type: "remote",
+                            dataUrl: c.dataUrl,
+                            jsonUrl: c.jsonUrl
+                        };
+                        
+                        // 2. 動態生成下拉選單選項，並插在 local_case1 前面
+                        const opt = document.createElement('option');
+                        opt.value = c.id;
+                        opt.innerText = c.name;
+                        select.insertBefore(opt, localMarker);
+                    });
+                    console.log(`成功載入了 ${configCases.length} 個線上案例設定。`);
+                }
+            } catch (err) {
+                console.log("未找到 cases_config.json，將只顯示本機選項。如果您想啟用線上案例，請在 GitHub 建立該檔案。");
+            }
+        });
+
+        // --- 臨床資訊面板控制 ---
         function toggleContextPanel() {
             const panel = document.getElementById('contextPanel');
             panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
@@ -404,15 +424,8 @@
 
             btn.style.display = 'inline-block';
             
-            // 將物件資料轉換為表格顯示
             let html = '<table style="width: 100%; border-collapse: collapse;">';
-            const keyMap = {
-                patient: "病患資訊",
-                surgery: "手術名稱",
-                anesthesia: "麻醉方式",
-                history: "過去病史",
-                note: "備註說明"
-            };
+            const keyMap = { patient: "病患資訊", surgery: "手術名稱", anesthesia: "麻醉方式", history: "過去病史", note: "備註說明" };
 
             for (const [key, value] of Object.entries(currentContext)) {
                 let displayKey = keyMap[key] || key;
@@ -423,20 +436,16 @@
             }
             html += '</table>';
             content.innerHTML = html;
-            
-            // 預設展開面板
             panel.style.display = 'block';
         }
 
-        // --- 新增：臨床資訊編輯器邏輯 ---
+        // --- 臨床資訊編輯器邏輯 ---
         function openContextEditor() {
             if (!neuroData) {
                 alert("請先開啟波形檔案！");
                 return;
             }
             document.getElementById('contextModal').style.display = 'flex';
-            
-            // 載入現有資料
             document.getElementById('ctxPatient').value = currentContext?.patient || '';
             document.getElementById('ctxSurgery').value = currentContext?.surgery || '';
             document.getElementById('ctxAnesthesia').value = currentContext?.anesthesia || '';
@@ -450,24 +459,18 @@
 
         function saveContextEditor() {
             if (!currentContext) currentContext = {};
-            
             currentContext.patient = document.getElementById('ctxPatient').value.trim();
             currentContext.surgery = document.getElementById('ctxSurgery').value.trim();
             currentContext.anesthesia = document.getElementById('ctxAnesthesia').value.trim();
             currentContext.history = document.getElementById('ctxHistory').value.trim();
             currentContext.note = document.getElementById('ctxNote').value.trim();
             
-            // 檢查是否全部空白，若是則清空 currentContext
             let isEmpty = Object.values(currentContext).every(val => val === '');
-            if (isEmpty) {
-                currentContext = null;
-            }
+            if (isEmpty) { currentContext = null; }
 
             closeContextEditor();
-            renderContextPanel(); // 重新渲染表格
-            if (currentContext) {
-                document.getElementById('contextPanel').style.display = 'block';
-            }
+            renderContextPanel();
+            if (currentContext) { document.getElementById('contextPanel').style.display = 'block'; }
         }
 
         // --- 更新事件下拉選單 ---
@@ -492,7 +495,6 @@
             });
         }
 
-        // --- 跳轉到指定的事件 ---
         function jumpToEvent(indexStr) {
             if (indexStr === "") return;
             const idx = parseInt(indexStr);
@@ -521,7 +523,6 @@
             const caseInfo = presetCases[caseKey];
 
             if (caseInfo.type === "remote") {
-                // 自動下載模式
                 document.getElementById('loader').style.display = 'flex';
                 isPlaying = false; 
                 if(animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -532,36 +533,25 @@
                     if (!dataResponse.ok) throw new Error("找不到波形檔案，請確認路徑正確。");
                     const arrayBuffer = await dataResponse.arrayBuffer();
 
-                    // 判斷副檔名
                     const ext = caseInfo.dataUrl.split('.').pop().toLowerCase();
                     let parser;
-                    if (ext === 'edf') {
-                        parser = new SimpleEDFParser(arrayBuffer);
-                        currentFileType = "Sedline EDF";
-                    } else if (ext === 'r2a') {
-                        parser = new SimpleR2AParser(arrayBuffer);
-                        currentFileType = "BIS R2A";
-                    }
+                    if (ext === 'edf') { parser = new SimpleEDFParser(arrayBuffer); currentFileType = "Sedline EDF"; } 
+                    else if (ext === 'r2a') { parser = new SimpleR2AParser(arrayBuffer); currentFileType = "BIS R2A"; }
 
-                    // 初始化播放器核心
                     initializePlayerCore(parser);
 
-                    // 下載對應的 JSON 標記
                     loaderText.innerText = "Downloading Annotations...";
                     try {
                         const jsonResponse = await fetch(caseInfo.jsonUrl);
                         if (jsonResponse.ok) {
                             const parsed = await jsonResponse.json();
                             annotations = parsed.annotations || [];
-                            currentContext = parsed.context || null; // 讀取臨床資訊
+                            currentContext = parsed.context || null;
                         } else {
-                            annotations = [];
-                            currentContext = null;
+                            annotations = []; currentContext = null;
                         }
                     } catch (e) {
-                        console.warn("未找到配套的 JSON 檔案或解析失敗");
-                        annotations = [];
-                        currentContext = null;
+                        annotations = []; currentContext = null;
                     }
 
                     renderContextPanel();
@@ -578,7 +568,6 @@
                 }
 
             } else if (caseInfo.type === "local") {
-                // 本機標記套用模式
                 if (!neuroData) {
                     alert("這個案例是「純註記」，請先手動開啟對應的波形檔案。");
                     document.getElementById('caseSelect').value = "";
@@ -592,7 +581,6 @@
             }
         }
 
-        // 跳轉到第一個標記點的輔助函數
         function jumpToFirstAnnotation() {
             if (annotations.length > 0) {
                 currentTimeIdx = annotations[0].timeIdx;
@@ -604,7 +592,6 @@
             }
         }
 
-        // --- 核心共用：初始化播放器狀態 ---
         function initializePlayerCore(parser) {
             ampScale = 2.0;
             document.getElementById('txtAmp').innerText = "x" + ampScale.toFixed(1);
@@ -633,45 +620,31 @@
 
         function renderAnnotationDots() {
             const container = document.getElementById('annotationTimeline');
-            container.innerHTML = ''; // 清空舊標記
+            container.innerHTML = ''; 
             
-            // 同步更新事件下拉選單
             updateEventDropdown();
 
             if (!neuroData || totalSamples === 0) return;
 
             annotations.forEach((note) => {
                 const dot = document.createElement('div');
-                // 計算標記點在時間軸上的百分比位置
                 const posPercentage = (note.timeIdx / totalSamples) * 100;
                 
-                // 只繪製在範圍內的標記點
                 if (posPercentage >= 0 && posPercentage <= 100) {
                     dot.style.cssText = `
-                        position: absolute; 
-                        left: ${posPercentage}%; 
-                        top: 0; 
-                        width: 6px; 
-                        height: 100%; 
-                        background-color: ${note.color}; 
-                        cursor: pointer;
-                        border-radius: 2px;
-                        box-shadow: 0 0 3px black;
-                        z-index: 10;
+                        position: absolute; left: ${posPercentage}%; top: 0; width: 6px; height: 100%; 
+                        background-color: ${note.color}; cursor: pointer; border-radius: 2px;
+                        box-shadow: 0 0 3px black; z-index: 10;
                     `;
-                    
-                    dot.title = note.label; // 滑鼠懸浮時顯示文字
-                    
-                    // 點擊標記點時，跳轉到該時間
+                    dot.title = note.label; 
                     dot.onclick = () => {
                         currentTimeIdx = note.timeIdx;
                         if(currentTimeIdx >= totalSamples) currentTimeIdx = totalSamples - 1;
-                        timeline.value = currentTimeIdx; // 同步 Slider 的位置
+                        timeline.value = currentTimeIdx; 
                         updateTimeText();
                         drawEEG();
                         drawDSAFromMatrix();
                     };
-                    
                     container.appendChild(dot);
                 }
             });
@@ -711,9 +684,9 @@
                     const parsed = JSON.parse(e.target.result);
                     if (parsed.annotations) {
                         annotations = parsed.annotations;
-                        currentContext = parsed.context || null; // 同時載入臨床資訊
+                        currentContext = parsed.context || null; 
                         
-                        document.getElementById('caseSelect').value = ""; // 切換到自訂
+                        document.getElementById('caseSelect').value = ""; 
                         renderContextPanel();
                         renderAnnotationDots();
                         drawEEG();
@@ -732,21 +705,16 @@
             let dataFile = null;
             let jsonFile = null;
 
-            // 支援同時選擇多個檔案，區分出 EDF/R2A 與 JSON
             for (let i = 0; i < files.length; i++) {
                 const ext = files[i].name.split('.').pop().toLowerCase();
                 if (ext === 'edf' || ext === 'r2a') dataFile = files[i];
                 if (ext === 'json') jsonFile = files[i];
             }
 
-            // 如果只上傳 JSON 標記檔 (前提是已經載入過波形)
             if (jsonFile && !dataFile) {
-                if (!neuroData) {
-                    alert("請先載入波形檔案，再載入標記檔！");
-                    return;
-                }
+                if (!neuroData) { alert("請先載入波形檔案，再載入標記檔！"); return; }
                 loadJsonFile(jsonFile);
-                event.target.value = ""; // 重置 input 以允許重複選取
+                event.target.value = ""; 
                 return;
             }
 
@@ -768,24 +736,14 @@
             reader.onload = function(e) {
                 try {
                     let parser;
-                    if (ext === 'edf') {
-                        parser = new SimpleEDFParser(e.target.result);
-                        currentFileType = "Sedline EDF";
-                    } else if (ext === 'r2a') {
-                        parser = new SimpleR2AParser(e.target.result);
-                        currentFileType = "BIS R2A";
-                    } else {
-                        throw new Error("Unsupported file format.");
-                    }
+                    if (ext === 'edf') { parser = new SimpleEDFParser(e.target.result); currentFileType = "Sedline EDF"; } 
+                    else if (ext === 'r2a') { parser = new SimpleR2AParser(e.target.result); currentFileType = "BIS R2A"; } 
+                    else { throw new Error("Unsupported file format."); }
 
-                    // 使用共用初始化模組
                     initializePlayerCore(parser);
                     
-                    if (jsonFile) {
-                        loadJsonFile(jsonFile);
-                    } else {
-                        renderAnnotationDots(); 
-                    }
+                    if (jsonFile) { loadJsonFile(jsonFile); } 
+                    else { renderAnnotationDots(); }
 
                     loaderText.innerText = "Pre-calculating DSA...";
                     setTimeout(() => precomputeDSA(), 50);
@@ -1015,7 +973,6 @@
                 eegCtx.fillText(channelLabels[i], 10, yOffset - 10);
             });
 
-            // 僅繪製虛線，並把文字改為左下角的狀態框呈現
             annotations.forEach((note) => {
                 if (note.timeIdx >= kStart && note.timeIdx <= kEnd) {
                     const x = ((note.timeIdx % windowSamples) / windowSamples) * eegCanvas.width;
@@ -1031,7 +988,6 @@
                 }
             });
 
-            // 尋找最近的一個標記 (Latest Event)
             let currentEvent = null;
             for (let i = annotations.length - 1; i >= 0; i--) {
                 if (annotations[i].timeIdx <= currentTimeIdx) {
@@ -1040,7 +996,6 @@
                 }
             }
 
-            // 繪製左下角的事件文字框
             if (currentEvent) {
                 eegCtx.save();
                 const timeSec = Math.floor(currentEvent.timeIdx / fs);
@@ -1055,15 +1010,12 @@
                 const boxX = 10;
                 const boxY = eegCanvas.height - 35;
                 
-                // 背景框
                 eegCtx.fillStyle = 'rgba(20, 20, 20, 0.85)';
                 eegCtx.fillRect(boxX, boxY, textWidth + 20, 26);
                 
-                // 左側顏色標記條
                 eegCtx.fillStyle = currentEvent.color || '#FFFF00';
                 eegCtx.fillRect(boxX, boxY, 5, 26);
                 
-                // 文字
                 eegCtx.fillStyle = '#FFFFFF';
                 eegCtx.textAlign = 'left';
                 eegCtx.textBaseline = 'top';
@@ -1141,7 +1093,6 @@
             }
             dsaCtx.putImageData(imgData, 0, 0);
 
-            // 繪製在 DSA 畫布上的註記 (保持不動，以便總覽全貌)
             annotations.forEach((note) => {
                 const noteStep = Math.floor(note.timeIdx / stepSamples);
                 if (noteStep >= startStep && noteStep <= currentStep) {
@@ -1165,7 +1116,7 @@
                     if (x < textWidth/2 + 4) { textX = textWidth/2 + 4; }
                     if (x > w - textWidth/2 - 4) { textX = w - textWidth/2 - 4; }
 
-                    dsaCtx.fillStyle = 'rgba(0, 0, 0, 0.75)'; // 背景黑底
+                    dsaCtx.fillStyle = 'rgba(0, 0, 0, 0.75)'; 
                     dsaCtx.fillRect(textX - textWidth/2 - 4, 4, textWidth + 8, 18);
                     
                     dsaCtx.fillStyle = note.color || '#FFFF00';
@@ -1179,7 +1130,6 @@
             dsaCtx.fillRect(w - 2, 0, 2, h);
         }
 
-        // --- 新增：自訂註記與匯出功能 ---
         function addCurrentTimeAnnotation() {
             if (!neuroData) {
                 alert("請先載入波形檔案！");
@@ -1192,22 +1142,20 @@
                 return;
             }
             
-            // 新增標記到陣列
             annotations.push({
                 timeIdx: Math.floor(currentTimeIdx),
                 label: text,
                 color: color
             });
             
-            // 依據時間先後排序
             annotations.sort((a, b) => a.timeIdx - b.timeIdx);
             
             renderAnnotationDots();
-            drawEEG();           // 立即重新繪製 EEG 以顯示新註記
-            drawDSAFromMatrix(); // 立即重新繪製 DSA 以顯示新註記
+            drawEEG();           
+            drawDSAFromMatrix(); 
             
-            document.getElementById('noteInput').value = ''; // 清空輸入框
-            document.getElementById('caseSelect').value = ""; // 將下拉選單切換至自訂
+            document.getElementById('noteInput').value = ''; 
+            document.getElementById('caseSelect').value = ""; 
         }
 
         function exportAnnotations() {
@@ -1215,7 +1163,6 @@
                 alert("目前沒有任何標記可以匯出！");
                 return;
             }
-            // 匯出時包含臨床背景資訊
             const exportData = {
                 fileType: currentFileType,
                 exportDate: new Date().toISOString(),
