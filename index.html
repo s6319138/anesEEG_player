@@ -327,6 +327,8 @@
             if (!caseKey) {
                 annotations = [];
                 renderAnnotationDots();
+                drawEEG();
+                drawDSAFromMatrix();
                 return;
             }
 
@@ -516,6 +518,8 @@
                         annotations = parsed.annotations;
                         document.getElementById('caseSelect').value = ""; // 切換到自訂
                         renderAnnotationDots();
+                        drawEEG();
+                        drawDSAFromMatrix();
                         alert(`成功載入 ${annotations.length} 個標記！`);
                     }
                 } catch(err) { alert("載入標記檔失敗：" + err); }
@@ -810,6 +814,44 @@
                 eegCtx.textAlign = 'left';
                 eegCtx.fillText(channelLabels[i], 10, yOffset - 10);
             });
+
+            // --- 新增：將符合目前時間範圍的註記直接繪製在 EEG 畫布上 ---
+            annotations.forEach((note) => {
+                // 判斷該標記是否在目前的掃描視窗範圍內
+                if (note.timeIdx >= kStart && note.timeIdx <= kEnd) {
+                    const x = ((note.timeIdx % windowSamples) / windowSamples) * eegCanvas.width;
+                    
+                    eegCtx.save();
+                    // 畫出虛線標記
+                    eegCtx.strokeStyle = note.color || '#FFFF00';
+                    eegCtx.lineWidth = 2;
+                    eegCtx.setLineDash([6, 4]);
+                    eegCtx.beginPath();
+                    eegCtx.moveTo(x, 0);
+                    eegCtx.lineTo(x, eegCanvas.height);
+                    eegCtx.stroke();
+                    
+                    // 畫出文字與半透明背景，確保不會跟腦波混在一起
+                    eegCtx.font = 'bold 14px sans-serif';
+                    eegCtx.textAlign = 'left';
+                    eegCtx.textBaseline = 'top';
+                    const textWidth = eegCtx.measureText(note.label).width;
+                    
+                    // 確保文字不會超出畫面右側
+                    let textX = x + 8;
+                    if (textX + textWidth > eegCanvas.width) {
+                        textX = x - textWidth - 8;
+                    }
+                    
+                    eegCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // 半透明黑底
+                    eegCtx.fillRect(textX - 4, 4, textWidth + 8, 22);
+                    
+                    eegCtx.fillStyle = note.color || '#FFFF00';
+                    eegCtx.fillText(note.label, textX, 8);
+                    
+                    eegCtx.restore();
+                }
+            });
             
             const cursorX = (currentMod / windowSamples) * eegCanvas.width;
             eegCtx.fillStyle = '#FF0000';
@@ -879,6 +921,42 @@
                 }
             }
             dsaCtx.putImageData(imgData, 0, 0);
+
+            // --- 新增：將符合目前時間範圍的註記直接繪製在 DSA 畫布上 ---
+            annotations.forEach((note) => {
+                const noteStep = Math.floor(note.timeIdx / stepSamples);
+                // 判斷該標記是否在 DSA 顯示的歷史視窗範圍內
+                if (noteStep >= startStep && noteStep <= currentStep) {
+                    const relPos = (noteStep - startStep) / totalStepsInView;
+                    const x = relPos * w;
+                    
+                    dsaCtx.save();
+                    dsaCtx.strokeStyle = note.color || '#FFFF00';
+                    dsaCtx.lineWidth = 2;
+                    dsaCtx.setLineDash([4, 4]);
+                    dsaCtx.beginPath();
+                    dsaCtx.moveTo(x, 0);
+                    dsaCtx.lineTo(x, h);
+                    dsaCtx.stroke();
+                    
+                    dsaCtx.font = 'bold 12px sans-serif';
+                    const textWidth = dsaCtx.measureText(note.label).width;
+                    
+                    // 文字置中，如果太靠邊則往內縮
+                    let textX = x;
+                    dsaCtx.textAlign = 'center';
+                    if (x < textWidth/2 + 4) { textX = textWidth/2 + 4; }
+                    if (x > w - textWidth/2 - 4) { textX = w - textWidth/2 - 4; }
+
+                    dsaCtx.fillStyle = 'rgba(0, 0, 0, 0.75)'; // 背景黑底
+                    dsaCtx.fillRect(textX - textWidth/2 - 4, 4, textWidth + 8, 18);
+                    
+                    dsaCtx.fillStyle = note.color || '#FFFF00';
+                    dsaCtx.textBaseline = 'top';
+                    dsaCtx.fillText(note.label, textX, 6);
+                    dsaCtx.restore();
+                }
+            });
             
             dsaCtx.fillStyle = '#FF0000';
             dsaCtx.fillRect(w - 2, 0, 2, h);
@@ -908,6 +986,9 @@
             annotations.sort((a, b) => a.timeIdx - b.timeIdx);
             
             renderAnnotationDots();
+            drawEEG();           // 立即重新繪製 EEG 以顯示新註記
+            drawDSAFromMatrix(); // 立即重新繪製 DSA 以顯示新註記
+            
             document.getElementById('noteInput').value = ''; // 清空輸入框
             document.getElementById('caseSelect').value = ""; // 將下拉選單切換至自訂
         }
@@ -1002,3 +1083,5 @@
     </script>
 </body>
 </html>
+
+<!-- 更新版本 -->
