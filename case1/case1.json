@@ -2,9 +2,9 @@
   "fileType": "BIS R2A",
   "exportDate": "2026-03-24T02:11:54.662Z",
   "context": {
-    "patient": "32歲 / 女性 / 33kg / lung cancer",
+    "patient": "OO歲 / 女性 / 33kg / OOOO cancer",
     "surgery": "femoral ORIF",
-    "anesthesia": "TCI Propofol + Remifentanil",
+    "anesthesia": "TCI Propofol",
     "history": "lung cancer",
     "note": "術中出現低血氧、低二氧化碳 然後低血壓後的腦波變化特徵。"
   },
