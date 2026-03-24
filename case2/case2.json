@@ -1,0 +1,23 @@
+{
+  "fileType": "BIS R2A",
+  "exportDate": "2026-03-24T06:40:40.349Z",
+  "context": {
+    "patient": "測試",
+    "surgery": "test",
+    "anesthesia": "test",
+    "history": "HTN",
+    "note": "test for teaching"
+  },
+  "annotations": [
+    {
+      "timeIdx": 143078,
+      "label": "aritfact",
+      "color": "#ffbb00"
+    },
+    {
+      "timeIdx": 798794,
+      "label": "alpha dropout",
+      "color": "#ffbb00"
+    }
+  ]
+}
