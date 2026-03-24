@@ -248,6 +248,13 @@
             <option value="local_case1">預設註記 B：套用於目前波形</option>
         </select>
 
+        <!-- 新增：事件跳轉下拉選單 -->
+        <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+        <label style="margin-left: 5px; color: #00ffcc;">標註事件：</label>
+        <select id="eventSelect" onchange="jumpToEvent(this.value)" style="background:#112233; color:white; border:1px solid #224466; padding:5px; border-radius:4px; max-width: 200px;">
+            <option value="">-- 尚無事件 --</option>
+        </select>
+
         <!-- 新增：自訂註記與匯出工具 -->
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
         <input type="text" id="noteInput" placeholder="輸入註記..." style="width:100px; background:#333; color:white; border:1px solid #555; padding:5px; border-radius:4px;">
@@ -322,7 +329,43 @@
             }
         };
 
-        // --- 新增：處理線上案例下載與切換 ---
+        // --- 新增：更新事件下拉選單 ---
+        function updateEventDropdown() {
+            const select = document.getElementById('eventSelect');
+            select.innerHTML = '<option value="">-- 選擇跳轉事件 --</option>';
+            
+            if (!annotations || annotations.length === 0) {
+                select.innerHTML = '<option value="">-- 尚無事件 --</option>';
+                return;
+            }
+
+            annotations.forEach((note, index) => {
+                const opt = document.createElement('option');
+                opt.value = index;
+                const sec = Math.floor(note.timeIdx / fs);
+                const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+                const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+                const s = (sec % 60).toString().padStart(2, '0');
+                opt.innerText = `[${h}:${m}:${s}] ${note.label}`;
+                select.appendChild(opt);
+            });
+        }
+
+        // --- 新增：跳轉到指定的事件 ---
+        function jumpToEvent(indexStr) {
+            if (indexStr === "") return;
+            const idx = parseInt(indexStr);
+            if (!isNaN(idx) && idx >= 0 && idx < annotations.length) {
+                currentTimeIdx = annotations[idx].timeIdx;
+                if(currentTimeIdx >= totalSamples) currentTimeIdx = totalSamples - 1;
+                timeline.value = currentTimeIdx;
+                updateTimeText();
+                drawEEG();
+                drawDSAFromMatrix();
+            }
+        }
+
+        // --- 處理線上案例下載與切換 ---
         async function loadPresetCase(caseKey) {
             if (!caseKey) {
                 annotations = [];
@@ -443,6 +486,9 @@
             const container = document.getElementById('annotationTimeline');
             container.innerHTML = ''; // 清空舊標記
             
+            // 同步更新事件下拉選單
+            updateEventDropdown();
+
             if (!neuroData || totalSamples === 0) return;
 
             annotations.forEach((note) => {
@@ -815,14 +861,11 @@
                 eegCtx.fillText(channelLabels[i], 10, yOffset - 10);
             });
 
-            // --- 新增：將符合目前時間範圍的註記直接繪製在 EEG 畫布上 ---
+            // --- 修改：僅繪製虛線，並把文字改為左下角的狀態框呈現 ---
             annotations.forEach((note) => {
-                // 判斷該標記是否在目前的掃描視窗範圍內
                 if (note.timeIdx >= kStart && note.timeIdx <= kEnd) {
                     const x = ((note.timeIdx % windowSamples) / windowSamples) * eegCanvas.width;
-                    
                     eegCtx.save();
-                    // 畫出虛線標記
                     eegCtx.strokeStyle = note.color || '#FFFF00';
                     eegCtx.lineWidth = 2;
                     eegCtx.setLineDash([6, 4]);
@@ -830,28 +873,50 @@
                     eegCtx.moveTo(x, 0);
                     eegCtx.lineTo(x, eegCanvas.height);
                     eegCtx.stroke();
-                    
-                    // 畫出文字與半透明背景，確保不會跟腦波混在一起
-                    eegCtx.font = 'bold 14px sans-serif';
-                    eegCtx.textAlign = 'left';
-                    eegCtx.textBaseline = 'top';
-                    const textWidth = eegCtx.measureText(note.label).width;
-                    
-                    // 確保文字不會超出畫面右側
-                    let textX = x + 8;
-                    if (textX + textWidth > eegCanvas.width) {
-                        textX = x - textWidth - 8;
-                    }
-                    
-                    eegCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'; // 半透明黑底
-                    eegCtx.fillRect(textX - 4, 4, textWidth + 8, 22);
-                    
-                    eegCtx.fillStyle = note.color || '#FFFF00';
-                    eegCtx.fillText(note.label, textX, 8);
-                    
                     eegCtx.restore();
                 }
             });
+
+            // 尋找最近的一個標記 (Latest Event)
+            let currentEvent = null;
+            for (let i = annotations.length - 1; i >= 0; i--) {
+                if (annotations[i].timeIdx <= currentTimeIdx) {
+                    currentEvent = annotations[i];
+                    break;
+                }
+            }
+
+            // 繪製左下角的事件文字框
+            if (currentEvent) {
+                eegCtx.save();
+                const timeSec = Math.floor(currentEvent.timeIdx / fs);
+                const h = Math.floor(timeSec / 3600).toString().padStart(2, '0');
+                const m = Math.floor((timeSec % 3600) / 60).toString().padStart(2, '0');
+                const s = (timeSec % 60).toString().padStart(2, '0');
+                
+                const boxText = `📌 最新事件 [${h}:${m}:${s}] - ${currentEvent.label}`;
+                eegCtx.font = 'bold 14px sans-serif';
+                const textWidth = eegCtx.measureText(boxText).width;
+                
+                const boxX = 10;
+                const boxY = eegCanvas.height - 35;
+                
+                // 背景框
+                eegCtx.fillStyle = 'rgba(20, 20, 20, 0.85)';
+                eegCtx.fillRect(boxX, boxY, textWidth + 20, 26);
+                
+                // 左側顏色標記條
+                eegCtx.fillStyle = currentEvent.color || '#FFFF00';
+                eegCtx.fillRect(boxX, boxY, 5, 26);
+                
+                // 文字
+                eegCtx.fillStyle = '#FFFFFF';
+                eegCtx.textAlign = 'left';
+                eegCtx.textBaseline = 'top';
+                eegCtx.fillText(boxText, boxX + 10, boxY + 6);
+                
+                eegCtx.restore();
+            }
             
             const cursorX = (currentMod / windowSamples) * eegCanvas.width;
             eegCtx.fillStyle = '#FF0000';
@@ -922,10 +987,9 @@
             }
             dsaCtx.putImageData(imgData, 0, 0);
 
-            // --- 新增：將符合目前時間範圍的註記直接繪製在 DSA 畫布上 ---
+            // 繪製在 DSA 畫布上的註記 (保持不動，以便總覽全貌)
             annotations.forEach((note) => {
                 const noteStep = Math.floor(note.timeIdx / stepSamples);
-                // 判斷該標記是否在 DSA 顯示的歷史視窗範圍內
                 if (noteStep >= startStep && noteStep <= currentStep) {
                     const relPos = (noteStep - startStep) / totalStepsInView;
                     const x = relPos * w;
@@ -942,7 +1006,6 @@
                     dsaCtx.font = 'bold 12px sans-serif';
                     const textWidth = dsaCtx.measureText(note.label).width;
                     
-                    // 文字置中，如果太靠邊則往內縮
                     let textX = x;
                     dsaCtx.textAlign = 'center';
                     if (x < textWidth/2 + 4) { textX = textWidth/2 + 4; }
