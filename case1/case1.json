@@ -1,31 +1,13 @@
 {
-  "fileType": "Sedline EDF",
-  "exportDate": "2024-05-20T12:00:00.000Z",
+  "fileType": "BIS R2A",
+  "exportDate": "2026-03-24T02:11:54.662Z",
   "context": {
     "patient": "32歲 / 女性 / 33kg / lung cancer",
     "surgery": "femoral ORIF",
     "anesthesia": "TCI Propofol + Remifentanil",
-    "history": " lung cancer ",
-    "note": " 術中出現低血氧、低二氧化碳 然後低血壓後的腦波變化特徵。"
+    "history": "lung cancer",
+    "note": "術中出現低血氧、低二氧化碳 然後低血壓後的腦波變化特徵。"
   },
-  "annotations": [
-    {
-      "timeIdx": 7680,
-      "label": "開始給予 Propofol",
-      "color": "#00FF00"
-    },
-    {
-      "timeIdx": 23040,
-      "label": "失去意識 (LOC)",
-      "color": "#FFD700"
-    }
-  ]
-}
-
-
-{
-  "fileType": "BIS R2A",
-  "exportDate": "2026-03-24T02:11:54.662Z",
   "annotations": [
     {
       "timeIdx": 192775,
