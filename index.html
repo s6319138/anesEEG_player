@@ -244,6 +244,7 @@
         <input type="text" id="noteInput" placeholder="輸入註記..." style="width:100px; background:#333; color:white; border:1px solid #555; padding:5px; border-radius:4px;">
         <input type="color" id="noteColor" value="#ffbb00" style="background:none; border:none; width:30px; height:30px; cursor:pointer;" title="選擇顏色">
         <button onclick="addCurrentTimeAnnotation()" style="background:#0055aa;">📌 標記</button>
+        <button onclick="openContextEditor()" style="background:#552288;">✏️ 編輯臨床資訊</button>
         <button onclick="exportAnnotations()" style="background:#aa5500;">💾 匯出JSON</button>
 
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
@@ -254,6 +255,37 @@
         <button onclick="toggleContextPanel()" style="position: absolute; right: 15px; top: 10px; background: none; border: none; font-size: 14px; color: #999; cursor: pointer;">✖ 關閉</button>
         <div style="font-weight: bold; color: #66ccff; margin-bottom: 10px; border-bottom: 1px solid #336699; padding-bottom: 8px; font-size: 16px;">📋 案例臨床背景資訊</div>
         <div id="contextContent" style="font-size: 14px; color: #ddd; line-height: 1.6;"></div>
+    </div>
+
+    <!-- 新增：臨床資訊編輯彈窗 -->
+    <div id="contextModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
+        <div style="background:#223344; padding:20px; border-radius:8px; width:450px; border:1px solid #446688; box-shadow: 0 4px 15px rgba(0,0,0,0.8); color: white;">
+            <h3 style="margin-top:0; color:#66ccff; border-bottom: 1px solid #446688; padding-bottom: 10px;">✏️ 編輯臨床背景資訊</h3>
+            <div style="margin-bottom:10px;">
+                <label style="display:block; color:#aaa; margin-bottom:5px; font-size: 14px;">病患資訊 (Patient)</label>
+                <input type="text" id="ctxPatient" placeholder="例如: 32歲 / 女性 / 33kg" style="width:100%; box-sizing:border-box; background:#111; color:white; border:1px solid #555; padding:8px; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="display:block; color:#aaa; margin-bottom:5px; font-size: 14px;">手術名稱 (Surgery)</label>
+                <input type="text" id="ctxSurgery" placeholder="例如: femoral ORIF" style="width:100%; box-sizing:border-box; background:#111; color:white; border:1px solid #555; padding:8px; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="display:block; color:#aaa; margin-bottom:5px; font-size: 14px;">麻醉方式 (Anesthesia)</label>
+                <input type="text" id="ctxAnesthesia" placeholder="例如: TCI Propofol + Remifentanil" style="width:100%; box-sizing:border-box; background:#111; color:white; border:1px solid #555; padding:8px; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="display:block; color:#aaa; margin-bottom:5px; font-size: 14px;">過去病史 (History)</label>
+                <input type="text" id="ctxHistory" placeholder="例如: lung cancer" style="width:100%; box-sizing:border-box; background:#111; color:white; border:1px solid #555; padding:8px; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#aaa; margin-bottom:5px; font-size: 14px;">備註說明 (Note)</label>
+                <textarea id="ctxNote" placeholder="輸入教學提示或觀察重點..." style="width:100%; height:80px; box-sizing:border-box; background:#111; color:white; border:1px solid #555; padding:8px; border-radius:4px; resize:vertical;"></textarea>
+            </div>
+            <div style="text-align:right;">
+                <button onclick="closeContextEditor()" style="background:#555; margin-right:10px; padding: 8px 20px;">取消</button>
+                <button onclick="saveContextEditor()" style="background:#0066cc; padding: 8px 20px;">儲存並顯示</button>
+            </div>
+        </div>
     </div>
 
     <!-- 第二區：畫面顯示調整 -->
@@ -394,6 +426,48 @@
             
             // 預設展開面板
             panel.style.display = 'block';
+        }
+
+        // --- 新增：臨床資訊編輯器邏輯 ---
+        function openContextEditor() {
+            if (!neuroData) {
+                alert("請先開啟波形檔案！");
+                return;
+            }
+            document.getElementById('contextModal').style.display = 'flex';
+            
+            // 載入現有資料
+            document.getElementById('ctxPatient').value = currentContext?.patient || '';
+            document.getElementById('ctxSurgery').value = currentContext?.surgery || '';
+            document.getElementById('ctxAnesthesia').value = currentContext?.anesthesia || '';
+            document.getElementById('ctxHistory').value = currentContext?.history || '';
+            document.getElementById('ctxNote').value = currentContext?.note || '';
+        }
+
+        function closeContextEditor() {
+            document.getElementById('contextModal').style.display = 'none';
+        }
+
+        function saveContextEditor() {
+            if (!currentContext) currentContext = {};
+            
+            currentContext.patient = document.getElementById('ctxPatient').value.trim();
+            currentContext.surgery = document.getElementById('ctxSurgery').value.trim();
+            currentContext.anesthesia = document.getElementById('ctxAnesthesia').value.trim();
+            currentContext.history = document.getElementById('ctxHistory').value.trim();
+            currentContext.note = document.getElementById('ctxNote').value.trim();
+            
+            // 檢查是否全部空白，若是則清空 currentContext
+            let isEmpty = Object.values(currentContext).every(val => val === '');
+            if (isEmpty) {
+                currentContext = null;
+            }
+
+            closeContextEditor();
+            renderContextPanel(); // 重新渲染表格
+            if (currentContext) {
+                document.getElementById('contextPanel').style.display = 'block';
+            }
         }
 
         // --- 更新事件下拉選單 ---
