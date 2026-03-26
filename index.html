@@ -230,7 +230,7 @@
     <!-- DSA 顯示區 -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="dsaCanvas"></canvas>
-        <div class="plot-label">DSA Trend (Multitaper Optimized: 3 Sines)</div>
+        <div class="plot-label">DSA Trend (Multitaper Optimized: 3 Sines - 30min History)</div>
     </div>
 
     <!-- 臨床資訊編輯彈窗 -->
@@ -312,7 +312,10 @@
             const stepSamples = Math.floor(dsaUpdateInterval * fs);
             const nSteps = Math.floor(totalSamples / stepSamples);
             dsaMaxFreqIdx = Math.floor(30 / (fs / nFFT));
-            dsaHistorySteps = Math.floor(600 / dsaUpdateInterval);
+            
+            // 將歷史顯示長度修改為 30 分鐘 (1800 秒)
+            dsaHistorySteps = Math.floor(1800 / dsaUpdateInterval);
+            
             fullDSAMatrixL = new Float32Array(nSteps * dsaMaxFreqIdx);
             fullDSAMatrixR = new Float32Array(nSteps * dsaMaxFreqIdx);
             const fft = new MiniFFT(nFFT);
