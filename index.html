@@ -258,6 +258,19 @@
         const loader = document.getElementById('loader');
         const loaderText = document.getElementById('loaderText');
 
+        // 根據檔案類型設定預設 DSA Range
+        function applyDefaultRangeByExtension(ext) {
+            if (ext === 'edf') {
+                dsaMinDB = -20;
+                dsaMaxDB = 20;
+            } else {
+                dsaMinDB = -10;
+                dsaMaxDB = 35;
+            }
+            document.getElementById('dsaMinInput').value = dsaMinDB;
+            document.getElementById('dsaMaxInput').value = dsaMaxDB;
+        }
+
         function getSineTaper(k, N) {
             const t = new Float32Array(N);
             const factor = Math.PI * (k + 1) / (N + 1);
@@ -503,6 +516,10 @@
             const reader = new FileReader(); reader.onload = (e) => {
                 const ext = file.name.split('.').pop().toLowerCase();
                 let parser = (ext === 'edf') ? new SimpleEDFParser(e.target.result) : new SimpleR2AParser(e.target.result);
+                
+                // 自動套用合適的預設 Range
+                applyDefaultRangeByExtension(ext);
+
                 initializePlayerCore(parser);
                 loader.style.display = 'flex'; setTimeout(() => precomputeDSA(), 50);
             }; reader.readAsArrayBuffer(file);
@@ -528,6 +545,10 @@
                 try {
                     const res = await fetch(info.dataUrl); const buf = await res.arrayBuffer();
                     const ext = info.dataUrl.split('.').pop().toLowerCase();
+                    
+                    // 自動套用合適的預設 Range
+                    applyDefaultRangeByExtension(ext);
+
                     initializePlayerCore((ext === 'edf') ? new SimpleEDFParser(buf) : new SimpleR2AParser(buf));
                     const jRes = await fetch(info.jsonUrl); 
                     if(jRes.ok) { 
