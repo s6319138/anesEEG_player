@@ -16,7 +16,7 @@
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Neuro Player (Smooth Scrolling DSA)</title>
+    <title>Universal Neuro Player (10s DSA Update)</title>
     <style>
         body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
         .controls { display: flex; gap: 10px; background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center; width: 95%; flex-wrap: wrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5);}
@@ -203,9 +203,9 @@
         <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[DSA]</span>
         <label>Speed:</label>
         <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
-            <option value="8.0" selected>Smooth (8s)</option>
-            <option value="5.0">Fast (5s Update)</option>
-            <option value="10.0">Slow (10s Update)</option>
+            <option value="10.0" selected>Smooth (10s)</option>
+            <option value="4.0">Trend (4s)</option>
+            <option value="1.0">Fast (1s)</option>
         </select>
         
         <label style="margin-left: 10px; color: #66ccff;">Range (dB):</label>
@@ -244,9 +244,9 @@
         let dsaMaxDB = 35; 
         let numTapers = 3; 
 
-        // 根據要求：預設改回 8s，但步進以 5s 為單位
-        let dsaUpdateInterval = 5.0; 
-        let dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR;
+        // 還原為 10.0 秒步進單位
+        let dsaUpdateInterval = 10.0; 
+        let dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR, lastDsaTimeIdx = 0;
         let annotations = [], currentContext = null;
 
         const eegCanvas = document.getElementById('eegCanvas');
@@ -289,7 +289,7 @@
 
         function initializePlayerCore(parser) {
             neuroData = parser.signals; fs = parser.header.fs; totalSamples = neuroData[0].data.length;
-            timeline.max = totalSamples; timeline.value = 0; currentTimeIdx = 0;
+            timeline.max = totalSamples; timeline.value = 0; currentTimeIdx = 0; lastDsaTimeIdx = 0;
             const numCh = Math.min(neuroData.length, 2);
             activeChannels = Array.from({length: numCh}, (_, i) => i);
             channelLabels = activeChannels.map(i => neuroData[i].label);
@@ -301,7 +301,7 @@
         function precomputeDSA() {
             const nFFT = 256;
             const stepSamples = Math.floor(dsaUpdateInterval * fs);
-            const nSteps = Math.ceil(totalSamples / stepSamples);
+            const nSteps = Math.floor(totalSamples / stepSamples);
             dsaMaxFreqIdx = Math.floor(30 / (fs / nFFT));
             // 歷史顯示長度 30 分鐘
             dsaHistorySteps = Math.floor(1800 / dsaUpdateInterval);
@@ -364,18 +364,19 @@
             eegCtx.fillStyle = 'red'; eegCtx.fillRect((currentMod / windowSamples) * eegCanvas.width, 0, 2, eegCanvas.height);
         }
 
+        // 改回 10 秒整數塊狀更新 (Block Update)
         function drawDSAFromMatrix() {
             if (!fullDSAMatrixL) return;
             const w = dsaCanvas.width, h = dsaCanvas.height;
             const gap = 20, chanH = (h - gap) / 2;
             const imgData = dsaCtx.createImageData(w, h), pixels = imgData.data;
             
-            const currentStepFloat = currentTimeIdx / (dsaUpdateInterval * fs);
-            const startStepFloat = currentStepFloat - dsaHistorySteps;
+            // 使用 Math.floor 確保更新是塊狀步進，減少重繪頻率且呈現區塊視覺
+            const currentStep = Math.floor(currentTimeIdx / (dsaUpdateInterval * fs));
+            const startStep = currentStep - dsaHistorySteps;
             
             for (let x = 0; x < w; x++) {
-                const stepIdxFloat = startStepFloat + (x / w * dsaHistorySteps);
-                const stepIdx = Math.floor(stepIdxFloat);
+                const stepIdx = Math.floor(startStep + (x / w * dsaHistorySteps));
                 
                 if (stepIdx < 0 || stepIdx >= fullDSAMatrixL.length / dsaMaxFreqIdx) {
                     for(let y=0; y<h; y++) {
@@ -447,7 +448,13 @@
             timeline.value = currentTimeIdx;
             updateTimeText(); 
             drawEEG();
-            drawDSAFromMatrix(); 
+            
+            // 優化: 只有當時間跨過 10 秒區間時才重新繪製 DSA，節省效能
+            if (currentTimeIdx - lastDsaTimeIdx >= dsaUpdateInterval * fs || currentTimeIdx < lastDsaTimeIdx) {
+                drawDSAFromMatrix(); 
+                lastDsaTimeIdx = currentTimeIdx;
+            }
+            
             animationFrameId = requestAnimationFrame(loop);
         }
 
@@ -464,7 +471,13 @@
         function adjustAmp(f) { ampScale *= f; document.getElementById('txtAmp').innerText = "x" + ampScale.toFixed(1); if(!isPlaying) drawEEG(); }
         function updateZoom(v) { windowSec = 120 / v; document.getElementById('txtZoom').innerText = windowSec.toFixed(1) + "s"; if(!isPlaying) drawEEG(); }
         function onSeekStart() { wasPlaying = isPlaying; isPlaying = false; }
-        function onSeek(v) { currentTimeIdx = parseInt(v); updateTimeText(); drawEEG(); drawDSAFromMatrix(); }
+        function onSeek(v) { 
+            currentTimeIdx = parseInt(v); 
+            updateTimeText(); 
+            drawEEG(); 
+            drawDSAFromMatrix(); 
+            lastDsaTimeIdx = currentTimeIdx; 
+        }
         function onSeekEnd() { if (wasPlaying) togglePlay(); }
         function calculateGlobalScales() { activeChannels.forEach((ch, i) => { const raw = neuroData[ch].data; let sum = 0, cnt = 0; for(let k=0; k<raw.length; k+=Math.floor(raw.length/2000)) { sum+=raw[k]; cnt++; } channelGlobalMeans[i]=sum/cnt; channelBaseScales[i]=(eegCanvas.height/5)/50; }); }
 
