@@ -203,8 +203,8 @@
         <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[DSA]</span>
         <label>Speed:</label>
         <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
-            <option value="10.0">Smooth (10s)</option>
-            <option value="4.0" selected>Trend (4s)</option>
+            <option value="10.0" selected>Smooth (10s)</option>
+            <option value="4.0">Trend (4s)</option>
             <option value="1.0">Fast (1s)</option>
         </select>
         
@@ -244,8 +244,8 @@
         let dsaMaxDB = 35; 
         let numTapers = 3; 
 
-        // 4.0 秒步進單位 (Trend 4s)
-        let dsaUpdateInterval = 4.0; 
+        // 10.0 秒步進單位
+        let dsaUpdateInterval = 10.0; 
         let dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR, lastDsaTimeIdx = 0;
         let annotations = [], currentContext = null;
 
@@ -286,6 +286,22 @@
         window.addEventListener('DOMContentLoaded', async () => {
             eegCanvas.width = eegCanvas.clientWidth; eegCanvas.height = eegCanvas.clientHeight;
             dsaCanvas.width = dsaCanvas.clientWidth; dsaCanvas.height = dsaCanvas.clientHeight;
+            
+            // 恢復初始化時讀取 cases_config.json 的功能
+            try {
+                const response = await fetch('cases_config.json');
+                if (response.ok) {
+                    const configCases = await response.json();
+                    const select = document.getElementById('caseSelect');
+                    configCases.forEach(c => {
+                        presetCases[c.id] = { type: "remote", dataUrl: c.dataUrl, jsonUrl: c.jsonUrl };
+                        const opt = document.createElement('option'); opt.value = c.id; opt.innerText = c.name;
+                        select.insertBefore(opt, document.getElementById('localCaseMarker'));
+                    });
+                }
+            } catch (err) {
+                console.log("No cases_config.json found or network error.");
+            }
         });
 
         function initializePlayerCore(parser) {
