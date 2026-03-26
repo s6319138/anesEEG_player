@@ -203,8 +203,8 @@
         <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[DSA]</span>
         <label>Speed:</label>
         <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
-            <option value="10.0" selected>Smooth (10s)</option>
-            <option value="4.0">Trend (4s)</option>
+            <option value="10.0">Smooth (10s)</option>
+            <option value="4.0" selected>Trend (4s)</option>
             <option value="1.0">Fast (1s)</option>
         </select>
         
@@ -244,8 +244,8 @@
         let dsaMaxDB = 35; 
         let numTapers = 3; 
 
-        // 還原為 10.0 秒步進單位
-        let dsaUpdateInterval = 10.0; 
+        // 4.0 秒步進單位 (Trend 4s)
+        let dsaUpdateInterval = 4.0; 
         let dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR, lastDsaTimeIdx = 0;
         let annotations = [], currentContext = null;
 
@@ -256,6 +256,7 @@
         const timeline = document.getElementById('timeline');
         const progressBar = document.getElementById('progressBar');
         const loader = document.getElementById('loader');
+        const loaderText = document.getElementById('loaderText');
 
         function getSineTaper(k, N) {
             const t = new Float32Array(N);
@@ -364,7 +365,7 @@
             eegCtx.fillStyle = 'red'; eegCtx.fillRect((currentMod / windowSamples) * eegCanvas.width, 0, 2, eegCanvas.height);
         }
 
-        // 改回 10 秒整數塊狀更新 (Block Update)
+        // 10 秒整數塊狀更新 (Block Update)
         function drawDSAFromMatrix() {
             if (!fullDSAMatrixL) return;
             const w = dsaCanvas.width, h = dsaCanvas.height;
@@ -502,8 +503,29 @@
         async function loadPresetCase(key) {
             if(!key) return; 
             const info = presetCases[key];
-            if (info.type === "local") {
-                if(!neuroData) { alert("請先開啟波形檔案。"); return; }
+            if(!info) return;
+
+            // 恢復遠端載入邏輯
+            if(info.type === "remote") {
+                loader.style.display = 'flex';
+                loaderText.innerText = "Downloading Case...";
+                try {
+                    const res = await fetch(info.dataUrl); const buf = await res.arrayBuffer();
+                    const ext = info.dataUrl.split('.').pop().toLowerCase();
+                    initializePlayerCore((ext === 'edf') ? new SimpleEDFParser(buf) : new SimpleR2AParser(buf));
+                    const jRes = await fetch(info.jsonUrl); 
+                    if(jRes.ok) { 
+                        const p = await jRes.json(); 
+                        annotations = p.annotations || []; 
+                        currentContext = p.context || null; 
+                    }
+                    renderContextPanel(); renderAnnotationDots(); precomputeDSA();
+                } catch(e) {
+                    alert("載入線上案例失敗");
+                    loader.style.display = 'none';
+                }
+            } else if (info.type === "local") {
+                if(!neuroData) { alert("請先開啟波形檔案。"); document.getElementById('caseSelect').value = ""; return; }
                 annotations = [...info.annotations]; currentContext = info.context || null;
                 renderContextPanel(); renderAnnotationDots(); drawEEG(); drawDSAFromMatrix();
             }
