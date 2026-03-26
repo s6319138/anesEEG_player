@@ -16,7 +16,7 @@
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Neuro Player (4s DSA Update)</title>
+    <title>Universal Neuro Player (4s DSA Update & Grid)</title>
     <style>
         body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
         .controls { display: flex; gap: 10px; background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center; width: 95%; flex-wrap: wrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5);}
@@ -373,15 +373,31 @@
             for(let f=0; f<dsaMaxFreqIdx; f++) outMatrix[offset + f] = 10 * Math.log10(avgPower[f] + 1e-12);
         }
 
+        // --- 整合了 1 秒垂直網格線的 drawEEG ---
         function drawEEG() {
             eegCtx.fillStyle = 'black'; eegCtx.fillRect(0, 0, eegCanvas.width, eegCanvas.height);
             if (!neuroData) return;
             const windowSamples = Math.floor(windowSec * fs);
             const currentMod = Math.floor(currentTimeIdx) % windowSamples;
             const kStart = Math.max(0, Math.floor(currentTimeIdx) - windowSamples);
+
+            // --- 新增：繪製 1 秒垂直網格線 ---
+            eegCtx.strokeStyle = '#333333';
+            eegCtx.lineWidth = 1;
+            eegCtx.beginPath();
+            for (let s = 1; s <= Math.ceil(windowSec); s++) {
+                const x = (s / windowSec) * eegCanvas.width;
+                eegCtx.moveTo(x, 0);
+                eegCtx.lineTo(x, eegCanvas.height);
+            }
+            eegCtx.stroke();
+            // ------------------------------
+
             activeChannels.forEach((ch, i) => {
                 const raw = neuroData[ch].data, mean = channelGlobalMeans[i], scale = channelBaseScales[i] * ampScale, yOff = eegCanvas.height * channelOffsets[i];
-                eegCtx.beginPath(); eegCtx.strokeStyle = '#FFFF00';
+                eegCtx.beginPath(); 
+                eegCtx.strokeStyle = '#FFFF00'; 
+                
                 let first = true, prevX = -1;
                 const drawStep = Math.max(1, Math.floor(windowSamples / eegCanvas.width));
                 for (let k = kStart; k <= Math.floor(currentTimeIdx); k += drawStep) {
@@ -394,14 +410,12 @@
             eegCtx.fillStyle = 'red'; eegCtx.fillRect((currentMod / windowSamples) * eegCanvas.width, 0, 2, eegCanvas.height);
         }
 
-        // 整數塊狀更新 (Block Update)
         function drawDSAFromMatrix() {
             if (!fullDSAMatrixL) return;
             const w = dsaCanvas.width, h = dsaCanvas.height;
             const gap = 20, chanH = (h - gap) / 2;
             const imgData = dsaCtx.createImageData(w, h), pixels = imgData.data;
             
-            // 使用 Math.floor 確保更新是塊狀步進，減少重繪頻率且呈現區塊視覺
             const currentStep = Math.floor(currentTimeIdx / (dsaUpdateInterval * fs));
             const startStep = currentStep - dsaHistorySteps;
             
@@ -438,7 +452,6 @@
             }
             dsaCtx.putImageData(imgData, 0, 0);
 
-            // 標記 Y 軸 (Hz)
             dsaCtx.fillStyle = "white"; dsaCtx.font = "bold 10px monospace"; dsaCtx.textAlign = "left";
             [0, 10, 20, 30].forEach(f => {
                 const yTop = chanH * (1 - f/30);
@@ -447,7 +460,6 @@
                 dsaCtx.fillText(f + "Hz", 5, yBottom + (f === 30 ? -2 : 10));
             });
 
-            // 標記通道 (L/R)
             dsaCtx.fillStyle = "#aaa"; dsaCtx.textAlign = "right";
             dsaCtx.fillText(channelLabels[0] || "L", w - 5, 12);
             dsaCtx.fillText(channelLabels[1] || "R", w - 5, h - 5);
@@ -479,7 +491,6 @@
             updateTimeText(); 
             drawEEG();
             
-            // 優化: 只有當時間跨過設定的區間時才重新繪製 DSA，節省效能
             if (currentTimeIdx - lastDsaTimeIdx >= dsaUpdateInterval * fs || currentTimeIdx < lastDsaTimeIdx) {
                 drawDSAFromMatrix(); 
                 lastDsaTimeIdx = currentTimeIdx;
@@ -517,7 +528,6 @@
                 const ext = file.name.split('.').pop().toLowerCase();
                 let parser = (ext === 'edf') ? new SimpleEDFParser(e.target.result) : new SimpleR2AParser(e.target.result);
                 
-                // 自動套用合適的預設 Range
                 applyDefaultRangeByExtension(ext);
 
                 initializePlayerCore(parser);
@@ -538,7 +548,6 @@
             const info = presetCases[key];
             if(!info) return;
 
-            // 遠端載入邏輯
             if(info.type === "remote") {
                 loader.style.display = 'flex';
                 loaderText.innerText = "Downloading Case...";
@@ -546,7 +555,6 @@
                     const res = await fetch(info.dataUrl); const buf = await res.arrayBuffer();
                     const ext = info.dataUrl.split('.').pop().toLowerCase();
                     
-                    // 自動套用合適的預設 Range
                     applyDefaultRangeByExtension(ext);
 
                     initializePlayerCore((ext === 'edf') ? new SimpleEDFParser(buf) : new SimpleR2AParser(buf));
