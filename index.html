@@ -16,7 +16,7 @@
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Neuro Player (Multitaper & Annotated)</title>
+    <title>Universal Neuro Player (Smooth Scrolling DSA)</title>
     <style>
         body { background-color: #000000; color: #d5d5d5; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
         .controls { display: flex; gap: 10px; background: #222; padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center; width: 95%; flex-wrap: wrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5);}
@@ -158,7 +158,6 @@
         </div>
     </div>
 
-    <!-- 控制面板 A：檔案與標註 -->
     <div class="controls">
         <button onclick="document.getElementById('fileInput').click()">📂 Open .edf / .r2a</button>
         <input type="file" id="fileInput" accept=".edf, .r2a, .json" multiple style="display: none;" onchange="handleFileSelect(event)">
@@ -183,14 +182,12 @@
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
     </div>
 
-    <!-- 臨床資訊面板 -->
     <div id="contextPanel" style="display:none; width: 95%; background: #112233; border: 1px solid #336699; border-radius: 8px; padding: 15px 20px; margin-bottom: 10px; box-sizing: border-box; text-align: left; position: relative;">
         <button onclick="toggleContextPanel()" style="position: absolute; right: 15px; top: 10px; background: none; border: none; color: #999; cursor: pointer;">✖ 關閉</button>
         <div style="font-weight: bold; color: #66ccff; margin-bottom: 10px; border-bottom: 1px solid #336699; padding-bottom: 8px;">📋 案例臨床背景資訊</div>
         <div id="contextContent" style="font-size: 14px; color: #ddd; line-height: 1.6;"></div>
     </div>
 
-    <!-- 控制面板 B：波形調整 -->
     <div class="controls" style="margin-bottom: 10px; padding: 6px 10px;">
         <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[EEG]</span>
         <label>Amp:</label>
@@ -206,19 +203,16 @@
         <span style="color: #aaa; font-weight: bold; margin-right: 5px;">[DSA]</span>
         <label>Speed:</label>
         <select id="dsaSpeedSel" onchange="updateDsaSpeed(this.value)" style="background:#333; color:white; border:1px solid #555; padding:5px;">
-            <option value="4.0">Trend (4s)</option>
-            <option value="1.0" selected>Fast (1s)</option>
-            <option value="0.5">Turbo (0.5s)</option>
+            <option value="8.0" selected>Smooth (8s)</option>
+            <option value="5.0">Fast (5s Update)</option>
+            <option value="10.0">Slow (10s Update)</option>
         </select>
         
         <label style="margin-left: 10px; color: #66ccff;">Range (dB):</label>
         <input type="number" id="dsaMinInput" value="-10" step="1" onchange="updateDsaRange()" title="Min dB"> ~ 
         <input type="number" id="dsaMaxInput" value="35" step="1" onchange="updateDsaRange()" title="Max dB">
-
-        <!-- Taper 已固定為 3 Sines，移除 UI 選項 -->
     </div>
 
-    <!-- EEG 顯示區 -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="eegCanvas"></canvas>
         <div class="plot-label" id="lblEeg">EEG (RAW µV - Sweep Mode)</div>
@@ -227,13 +221,11 @@
     <input type="range" id="timeline" min="0" max="1000" value="0" step="1" oninput="onSeek(this.value)" onmousedown="onSeekStart()" onmouseup="onSeekEnd()">
     <div id="annotationTimeline"></div>
 
-    <!-- DSA 顯示區 -->
     <div class="plot-container" style="height: 36vh;">
         <canvas id="dsaCanvas"></canvas>
-        <div class="plot-label">DSA Trend (Multitaper Optimized: 3 Sines - 30min History)</div>
+        <div class="plot-label">DSA Trend (Multitaper: 3 Sines - 30min History)</div>
     </div>
 
-    <!-- 臨床資訊編輯彈窗 -->
     <div id="contextModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
         <div style="background:#223344; padding:20px; border-radius:8px; width:450px; border:1px solid #446688; color: white;">
             <h3 style="margin-top:0; color:#66ccff;">✏️ 編輯臨床背景資訊</h3>
@@ -251,8 +243,10 @@
         let dsaMinDB = -10; 
         let dsaMaxDB = 35; 
         let numTapers = 3; 
-        
-        let dsaUpdateInterval = 1.0, dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR, lastDsaTimeIdx = 0;
+
+        // 根據要求：預設改回 8s，但步進以 5s 為單位
+        let dsaUpdateInterval = 5.0; 
+        let dsaHistorySteps, dsaMaxFreqIdx, fullDSAMatrixL, fullDSAMatrixR;
         let annotations = [], currentContext = null;
 
         const eegCanvas = document.getElementById('eegCanvas');
@@ -273,32 +267,29 @@
             return t;
         }
 
-        function updateTaperSettings(val) { numTapers = parseInt(val); if (neuroData) { loader.style.display = 'flex'; setTimeout(() => precomputeDSA(), 50); } }
         function updateDsaRange() { 
             dsaMinDB = parseFloat(document.getElementById('dsaMinInput').value); 
             dsaMaxDB = parseFloat(document.getElementById('dsaMaxInput').value); 
             if (neuroData) drawDSAFromMatrix(); 
         }
-        function updateDsaSpeed(val) { dsaUpdateInterval = parseFloat(val); if(neuroData) { loader.style.display = 'flex'; setTimeout(() => precomputeDSA(), 50); } }
+        
+        function updateDsaSpeed(val) { 
+            dsaUpdateInterval = parseFloat(val); 
+            if(neuroData) { 
+                loader.style.display = 'flex'; 
+                loaderText.innerText = "Recalculating DSA...";
+                setTimeout(() => precomputeDSA(), 50); 
+            } 
+        }
 
         window.addEventListener('DOMContentLoaded', async () => {
-            try {
-                const response = await fetch('cases_config.json');
-                if (response.ok) {
-                    const configCases = await response.json();
-                    const select = document.getElementById('caseSelect');
-                    configCases.forEach(c => {
-                        presetCases[c.id] = { type: "remote", dataUrl: c.dataUrl, jsonUrl: c.jsonUrl };
-                        const opt = document.createElement('option'); opt.value = c.id; opt.innerText = c.name;
-                        select.insertBefore(opt, document.getElementById('localCaseMarker'));
-                    });
-                }
-            } catch (err) {}
+            eegCanvas.width = eegCanvas.clientWidth; eegCanvas.height = eegCanvas.clientHeight;
+            dsaCanvas.width = dsaCanvas.clientWidth; dsaCanvas.height = dsaCanvas.clientHeight;
         });
 
         function initializePlayerCore(parser) {
             neuroData = parser.signals; fs = parser.header.fs; totalSamples = neuroData[0].data.length;
-            timeline.max = totalSamples; timeline.value = 0; currentTimeIdx = 0; lastDsaTimeIdx = 0;
+            timeline.max = totalSamples; timeline.value = 0; currentTimeIdx = 0;
             const numCh = Math.min(neuroData.length, 2);
             activeChannels = Array.from({length: numCh}, (_, i) => i);
             channelLabels = activeChannels.map(i => neuroData[i].label);
@@ -310,20 +301,20 @@
         function precomputeDSA() {
             const nFFT = 256;
             const stepSamples = Math.floor(dsaUpdateInterval * fs);
-            const nSteps = Math.floor(totalSamples / stepSamples);
+            const nSteps = Math.ceil(totalSamples / stepSamples);
             dsaMaxFreqIdx = Math.floor(30 / (fs / nFFT));
-            
-            // 將歷史顯示長度修改為 30 分鐘 (1800 秒)
+            // 歷史顯示長度 30 分鐘
             dsaHistorySteps = Math.floor(1800 / dsaUpdateInterval);
             
             fullDSAMatrixL = new Float32Array(nSteps * dsaMaxFreqIdx);
             fullDSAMatrixR = new Float32Array(nSteps * dsaMaxFreqIdx);
             const fft = new MiniFFT(nFFT);
             const tapers = [];
-            if (numTapers > 1) { for (let k = 0; k < numTapers; k++) tapers.push(getSineTaper(k, nFFT)); }
+            for (let k = 0; k < numTapers; k++) tapers.push(getSineTaper(k, nFFT));
+            
             let cur = 0;
             const process = () => {
-                const limit = Math.min(cur + 100, nSteps);
+                const limit = Math.min(cur + 200, nSteps);
                 for (let i = cur; i < limit; i++) {
                     const start = i * stepSamples;
                     if (start + nFFT <= totalSamples) {
@@ -341,20 +332,12 @@
 
         function computeMultitaperSlice(chIdx, start, stepIdx, fft, tapers, outMatrix) {
             const N = fft.size, raw = neuroData[chIdx].data, avgPower = new Float32Array(dsaMaxFreqIdx);
-            if (numTapers === 1) {
-                const real = new Float32Array(N), imag = new Float32Array(N);
-                let m = 0; for(let j=0; j<N; j++) m += raw[start+j]; m/=N;
-                for(let j=0; j<N; j++) real[j] = (raw[start+j]-m) * (0.5 * (1 - Math.cos(2*Math.PI*j/(N-1))));
+            for (let k = 0; k < numTapers; k++) {
+                const real = new Float32Array(N), imag = new Float32Array(N), taper = tapers[k];
+                let m = 0; for(let j=0; j<N; j++) m += (raw[start+j] || 0); m/=N;
+                for(let j=0; j<N; j++) real[j] = ((raw[start+j] || 0) - m) * taper[j];
                 fft.calculate(real, imag);
-                for(let f=0; f<dsaMaxFreqIdx; f++) avgPower[f] = real[f]*real[f] + imag[f]*imag[f];
-            } else {
-                for (let k = 0; k < numTapers; k++) {
-                    const real = new Float32Array(N), imag = new Float32Array(N), taper = tapers[k];
-                    let m = 0; for(let j=0; j<N; j++) m += raw[start+j]; m/=N;
-                    for(let j=0; j<N; j++) real[j] = (raw[start+j]-m) * taper[j];
-                    fft.calculate(real, imag);
-                    for(let f=0; f<dsaMaxFreqIdx; f++) avgPower[f] += (real[f]*real[f] + imag[f]*imag[f]) / numTapers;
-                }
+                for(let f=0; f<dsaMaxFreqIdx; f++) avgPower[f] += (real[f]*real[f] + imag[f]*imag[f]) / numTapers;
             }
             const offset = stepIdx * dsaMaxFreqIdx;
             for(let f=0; f<dsaMaxFreqIdx; f++) outMatrix[offset + f] = 10 * Math.log10(avgPower[f] + 1e-12);
@@ -364,15 +347,14 @@
             eegCtx.fillStyle = 'black'; eegCtx.fillRect(0, 0, eegCanvas.width, eegCanvas.height);
             if (!neuroData) return;
             const windowSamples = Math.floor(windowSec * fs);
-            const currentIntIdx = Math.floor(currentTimeIdx);
-            const currentMod = currentIntIdx % windowSamples;
-            const kStart = Math.max(0, currentIntIdx - windowSamples);
+            const currentMod = Math.floor(currentTimeIdx) % windowSamples;
+            const kStart = Math.max(0, Math.floor(currentTimeIdx) - windowSamples);
             activeChannels.forEach((ch, i) => {
                 const raw = neuroData[ch].data, mean = channelGlobalMeans[i], scale = channelBaseScales[i] * ampScale, yOff = eegCanvas.height * channelOffsets[i];
                 eegCtx.beginPath(); eegCtx.strokeStyle = '#FFFF00';
                 let first = true, prevX = -1;
                 const drawStep = Math.max(1, Math.floor(windowSamples / eegCanvas.width));
-                for (let k = kStart; k <= currentIntIdx; k += drawStep) {
+                for (let k = kStart; k <= Math.floor(currentTimeIdx); k += drawStep) {
                     const x = ((k % windowSamples) / windowSamples) * eegCanvas.width, y = yOff - (raw[k] - mean) * scale;
                     if (first || x < prevX) { eegCtx.moveTo(x, y); first = false; } else eegCtx.lineTo(x, y);
                     prevX = x;
@@ -385,13 +367,16 @@
         function drawDSAFromMatrix() {
             if (!fullDSAMatrixL) return;
             const w = dsaCanvas.width, h = dsaCanvas.height;
-            const gap = 20; 
-            const chanH = (h - gap) / 2;
+            const gap = 20, chanH = (h - gap) / 2;
             const imgData = dsaCtx.createImageData(w, h), pixels = imgData.data;
-            const currentStep = Math.floor(currentTimeIdx / (dsaUpdateInterval * fs)), startStep = currentStep - dsaHistorySteps;
+            
+            const currentStepFloat = currentTimeIdx / (dsaUpdateInterval * fs);
+            const startStepFloat = currentStepFloat - dsaHistorySteps;
             
             for (let x = 0; x < w; x++) {
-                const stepIdx = Math.floor(startStep + (x / w * dsaHistorySteps));
+                const stepIdxFloat = startStepFloat + (x / w * dsaHistorySteps);
+                const stepIdx = Math.floor(stepIdxFloat);
+                
                 if (stepIdx < 0 || stepIdx >= fullDSAMatrixL.length / dsaMaxFreqIdx) {
                     for(let y=0; y<h; y++) {
                         const p = (y * w + x) * 4;
@@ -399,6 +384,7 @@
                     }
                     continue;
                 }
+
                 const offset = stepIdx * dsaMaxFreqIdx;
                 for (let y = 0; y < h; y++) {
                     let val = -999;
@@ -421,20 +407,17 @@
             }
             dsaCtx.putImageData(imgData, 0, 0);
 
-            dsaCtx.fillStyle = "white";
-            dsaCtx.font = "bold 10px monospace";
-            dsaCtx.textAlign = "left";
-            const freqs = [0, 10, 20, 30];
-            
-            freqs.forEach(f => {
+            // 標記 Y 軸 (Hz)
+            dsaCtx.fillStyle = "white"; dsaCtx.font = "bold 10px monospace"; dsaCtx.textAlign = "left";
+            [0, 10, 20, 30].forEach(f => {
                 const yTop = chanH * (1 - f/30);
                 dsaCtx.fillText(f + "Hz", 5, yTop + (f === 0 ? -2 : 10));
                 const yBottom = (chanH + gap) + (chanH * f/30);
                 dsaCtx.fillText(f + "Hz", 5, yBottom + (f === 30 ? -2 : 10));
             });
 
-            dsaCtx.fillStyle = "#aaa";
-            dsaCtx.textAlign = "right";
+            // 標記通道 (L/R)
+            dsaCtx.fillStyle = "#aaa"; dsaCtx.textAlign = "right";
             dsaCtx.fillText(channelLabels[0] || "L", w - 5, 12);
             dsaCtx.fillText(channelLabels[1] || "R", w - 5, h - 5);
 
@@ -453,7 +436,7 @@
             if (!neuroData) return; isPlaying = !isPlaying; 
             document.getElementById('btnPlay').innerText = isPlaying ? "⏸ Pause" : "▶ Play";
             document.getElementById('btnPlay').style.background = isPlaying ? "#880000" : "#006600";
-            if (isPlaying) { lastFrameTime = performance.now(); loop(); } else if(animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (isPlaying) { lastFrameTime = performance.now(); loop(); }
         }
 
         function loop() {
@@ -462,8 +445,9 @@
             currentTimeIdx += fs * dt;
             if (currentTimeIdx >= totalSamples) { currentTimeIdx = totalSamples - 1; togglePlay(); }
             timeline.value = currentTimeIdx;
-            updateTimeText(); drawEEG();
-            if (currentTimeIdx - lastDsaTimeIdx >= dsaUpdateInterval * fs) { drawDSAFromMatrix(); lastDsaTimeIdx = currentTimeIdx; }
+            updateTimeText(); 
+            drawEEG();
+            drawDSAFromMatrix(); 
             animationFrameId = requestAnimationFrame(loop);
         }
 
@@ -494,79 +478,34 @@
             }; reader.readAsArrayBuffer(file);
         }
 
-        // --- 案例系統 ---
         let presetCases = { 
             "local_case1": { 
                 type: "local", 
-                context: { 
-                    patient: "範例 / 測試用",
-                    note: "您可以自己上傳波形，並套用這個本機測試註記。"
-                }, 
-                annotations: [
-                    { timeIdx: 128 * 60, label: "測試註記 A", color: "#00FF00" },
-                    { timeIdx: 128 * 180, label: "測試註記 B", color: "#FFD700" }
-                ] 
+                context: { patient: "範例案例", note: "套用本機標註測試。" }, 
+                annotations: [ { timeIdx: 128 * 60, label: "測試註記 A", color: "#00FF00" } ] 
             } 
         };
 
         async function loadPresetCase(key) {
             if(!key) return; 
             const info = presetCases[key];
-            if(!info) return;
-
-            if(info.type === "remote") {
-                loader.style.display = 'flex';
-                loaderText.innerText = "Downloading Case...";
-                try {
-                    const res = await fetch(info.dataUrl); const buf = await res.arrayBuffer();
-                    const ext = info.dataUrl.split('.').pop().toLowerCase();
-                    initializePlayerCore((ext === 'edf') ? new SimpleEDFParser(buf) : new SimpleR2AParser(buf));
-                    const jRes = await fetch(info.jsonUrl); 
-                    if(jRes.ok) { 
-                        const p = await jRes.json(); 
-                        annotations = p.annotations || []; 
-                        currentContext = p.context || null; 
-                    }
-                    renderContextPanel(); renderAnnotationDots(); precomputeDSA();
-                } catch(e) {
-                    alert("載入線上案例失敗");
-                    loader.style.display = 'none';
-                }
-            } else if (info.type === "local") {
-                // 本機案例邏輯：套用註記到目前已載入的波形
-                if(!neuroData) {
-                    alert("請先手動開啟波形檔案，再套用本機註記案例。");
-                    document.getElementById('caseSelect').value = "";
-                    return;
-                }
-                annotations = [...info.annotations];
-                currentContext = info.context || null;
-                renderContextPanel();
-                renderAnnotationDots();
-                drawEEG();
-                drawDSAFromMatrix();
+            if (info.type === "local") {
+                if(!neuroData) { alert("請先開啟波形檔案。"); return; }
+                annotations = [...info.annotations]; currentContext = info.context || null;
+                renderContextPanel(); renderAnnotationDots(); drawEEG(); drawDSAFromMatrix();
             }
         }
 
         function toggleContextPanel() { const p = document.getElementById('contextPanel'); p.style.display = (p.style.display === 'none') ? 'block' : 'none'; }
         function renderContextPanel() {
-            if(!currentContext) { document.getElementById('btnContext').style.display = 'none'; return; }
-            document.getElementById('btnContext').style.display = 'inline-block';
-            document.getElementById('contextContent').innerHTML = `
-                病患: ${currentContext.patient || '--'}<br>
-                手術: ${currentContext.surgery || '--'}<br>
-                備註: ${currentContext.note || '--'}`;
+            if(!currentContext) return; document.getElementById('btnContext').style.display = 'inline-block';
+            document.getElementById('contextContent').innerHTML = `病患: ${currentContext.patient || '--'}<br>備註: ${currentContext.note || '--'}`;
         }
         function openContextEditor() { document.getElementById('contextModal').style.display = 'flex'; }
         function closeContextEditor() { document.getElementById('contextModal').style.display = 'none'; }
         function saveContextEditor() {
-            currentContext = { 
-                patient: document.getElementById('ctxPatient').value, 
-                surgery: document.getElementById('ctxSurgery').value, 
-                note: document.getElementById('ctxNote').value 
-            };
+            currentContext = { patient: document.getElementById('ctxPatient').value, surgery: document.getElementById('ctxSurgery').value, note: document.getElementById('ctxNote').value };
             closeContextEditor(); renderContextPanel();
-            document.getElementById('contextPanel').style.display = 'block';
         }
         function addCurrentTimeAnnotation() {
             const label = document.getElementById('noteInput').value; if(!label) return;
@@ -589,10 +528,9 @@
         function exportAnnotations() {
             const data = JSON.stringify({ context: currentContext, annotations });
             const blob = new Blob([data], {type: "application/json"});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `EEG_Annotations_${Date.now()}.json`; a.click();
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `EEG_Annotations.json`; a.click();
         }
     </script>
 </body>
 </html>
-
 <!-- 更新版本 -->
