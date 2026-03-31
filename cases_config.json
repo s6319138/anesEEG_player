@@ -10,6 +10,12 @@
     "name": "教學案例 2 (test)",
     "dataUrl": "case2/case2.r2a",
     "jsonUrl": "case2/case2.json"
+  },
+  {
+    "id": "remote_case3",
+    "name": "教學案例 3 (test)",
+    "dataUrl": "case3/case3.r2a",
+    "jsonUrl": "case3/case3.json"
   }
 ]
 
