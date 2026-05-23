@@ -7,13 +7,19 @@
   },
   {
     "id": "remote_case2",
-    "name": "教學案例 2 (test)",
+    "name": "教學案例 2 (case2)",
     "dataUrl": "case2/case2.r2a",
     "jsonUrl": "case2/case2.json"
   },
   {
     "id": "remote_case3",
-    "name": "教學案例 3 (test)",
+    "name": "教學案例 3 (case3)",
+    "dataUrl": "case3/case3.r2a",
+    "jsonUrl": "case3/case3.json"
+  },
+   {
+    "id": "remote_case4",
+    "name": "教學案例 4 (case4)",
     "dataUrl": "case3/case3.r2a",
     "jsonUrl": "case3/case3.json"
   }
