@@ -17,12 +17,10 @@
     "dataUrl": "case3/case3.r2a",
     "jsonUrl": "case3/case3.json"
   },
-   {
+  {
     "id": "remote_case4",
     "name": "教學案例 4 (case4)",
     "dataUrl": "case4/case4.r2a",
     "jsonUrl": "case4/case4.json"
   }
 ]
-
-
