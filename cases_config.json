@@ -22,11 +22,11 @@
     "name": "教學案例 4 (alpha drop)",
     "dataUrl": "case4/case4.r2a",
     "jsonUrl": "case4/case4.json"
-  }.
+  },
   {
     "id": "remote_case5",
     "name": "教學案例 5 (strong alpha)",
-    "dataUrl": "case4/case4.r2a",
-    "jsonUrl": "case4/case4.json"
-  }.
+    "dataUrl": "case5/case5.r2a",
+    "jsonUrl": "case5/case5.json"
+  }
 ]
