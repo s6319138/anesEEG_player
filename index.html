@@ -23,6 +23,8 @@
         button { background: #333; color: white; border: 1px solid #555; padding: 5px 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:hover { background: #444; }
         .btn-play { background: #006600; }
+        .btn-json { background: #885522; }
+        .btn-json:hover { background: #aa7744; }
         .plot-container { position: relative; width: 95%; margin-bottom: 10px; border: 1px solid #333; background: #000; flex-shrink: 0; }
         .plot-label { position: absolute; left: 5px; top: 5px; color: #FFFF00; font-size: 12px; pointer-events: none; z-index: 10; text-shadow: 1px 1px 2px black;}
         canvas { display: block; width: 100%; height: 100%; }
@@ -159,26 +161,35 @@
     </div>
 
     <div class="controls">
-        <button onclick="document.getElementById('fileInput').click()">📂 Open .edf / .r2a</button>
-        <input type="file" id="fileInput" accept=".edf, .r2a, .json" multiple style="display: none;" onchange="handleFileSelect(event)">
+        <button onclick="document.getElementById('dataFileInput').click()">📂 開啟腦波檔 (.edf / .r2a)</button>
+        <input type="file" id="dataFileInput" accept=".edf, .r2a" style="display: none;" onchange="handleDataFileSelect(event)">
+        
+        <button class="btn-json" onclick="document.getElementById('jsonFileInput').click()">📂 匯入標註檔 (.json)</button>
+        <input type="file" id="jsonFileInput" accept=".json" style="display: none;" onchange="handleJsonFileSelect(event)">
+        
         <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Play</button>
+        
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+        
         <label style="color: #ffbb00; font-weight:bold;">教學案例：</label>
         <select id="caseSelect" onchange="loadPresetCase(this.value)" style="background:#332211; color:white; border:1px solid #775522; padding:5px; border-radius:4px; font-weight: bold;">
             <option value="">-- 選擇線上案例 --</option>
             <option id="localCaseMarker" value="local_case1">預設註記 B：套用於目前波形</option>
         </select>
         <button id="btnContext" onclick="toggleContextPanel()" style="display:none; background:#225588;">ℹ️ 臨床資訊</button>
+        
         <label style="margin-left: 10px; color: #00ffcc; font-weight:bold;">標註事件：</label>
         <select id="eventSelect" onchange="jumpToEvent(this.value)" style="background:#112233; color:white; border:1px solid #224466; padding:5px; border-radius:4px; max-width: 200px;">
             <option value="">-- 尚無事件 --</option>
         </select>
+        
         <div style="border-left:1px solid #555; height:20px; margin:0 10px;"></div>
+        
         <input type="text" id="noteInput" placeholder="輸入註記..." style="width:100px; background:#333; color:white; border:1px solid #555; padding:5px; border-radius:4px;">
         <input type="color" id="noteColor" value="#ffbb00" style="background:none; border:none; width:30px; height:30px; cursor:pointer;" title="顏色">
         <button onclick="addCurrentTimeAnnotation()" style="background:#0055aa;">📌 標記</button>
         <button onclick="openContextEditor()" style="background:#552288;">✏️ 編輯資訊</button>
-        <button onclick="exportAnnotations()" style="background:#aa5500;">💾 匯出JSON</button>
+        <button onclick="exportAnnotations()" style="background:#aa5500;">💾 匯出</button>
         <span id="txtTime" style="margin-left: auto; color: #00ff00; font-family: monospace; font-size: 16px;">00:00:00</span>
     </div>
 
@@ -522,17 +533,54 @@
         function onSeekEnd() { if (wasPlaying) togglePlay(); }
         function calculateGlobalScales() { activeChannels.forEach((ch, i) => { const raw = neuroData[ch].data; let sum = 0, cnt = 0; for(let k=0; k<raw.length; k+=Math.floor(raw.length/2000)) { sum+=raw[k]; cnt++; } channelGlobalMeans[i]=sum/cnt; channelBaseScales[i]=(eegCanvas.height/5)/50; }); }
 
-        function handleFileSelect(event) {
-            const file = event.target.files[0]; if(!file) return;
-            const reader = new FileReader(); reader.onload = (e) => {
+        // --- 處理主波形資料 (.edf / .r2a) 載入 ---
+        function handleDataFileSelect(event) {
+            const file = event.target.files[0]; 
+            if(!file) return;
+
+            const reader = new FileReader(); 
+            reader.onload = (e) => {
                 const ext = file.name.split('.').pop().toLowerCase();
                 let parser = (ext === 'edf') ? new SimpleEDFParser(e.target.result) : new SimpleR2AParser(e.target.result);
                 
                 applyDefaultRangeByExtension(ext);
-
                 initializePlayerCore(parser);
-                loader.style.display = 'flex'; setTimeout(() => precomputeDSA(), 50);
-            }; reader.readAsArrayBuffer(file);
+
+                // 如果載入波形前已經先載入了 JSON，就在這裡重新繪製標註點
+                if (annotations.length > 0) {
+                    renderAnnotationDots();
+                }
+
+                // 開始運算 DSA 頻譜
+                loader.style.display = 'flex'; 
+                setTimeout(() => precomputeDSA(), 50);
+            }; 
+            reader.readAsArrayBuffer(file);
+        }
+
+        // --- 處理標註檔 (.json) 載入 ---
+        function handleJsonFileSelect(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const p = JSON.parse(e.target.result);
+                    annotations = p.annotations || [];
+                    currentContext = p.context || null;
+                    renderContextPanel();
+                    
+                    // 只有在波形已經載入 (totalSamples 有值) 時才繪製時間軸上的點，否則先存著等波形載入
+                    if (totalSamples) {
+                        renderAnnotationDots();
+                    }
+                } catch (error) {
+                    console.error("JSON 解析失敗:", error);
+                    alert("無法解析上傳的 JSON 檔案，請確認格式是否為正確的導出格式。");
+                }
+            };
+            reader.readAsText(file);
         }
 
         let presetCases = { 
@@ -613,4 +661,3 @@
     </script>
 </body>
 </html>
-<!-- 更新版本 -->
